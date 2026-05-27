@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>骑行路线助手</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; height: 100vh; display: flex; }
+#app { display: flex; width: 100%; height: 100%; }
+
+#sidebar {
+  width: 380px; min-width: 320px;
+  display: flex; flex-direction: column;
+  border-right: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+#header {
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex; align-items: center; gap: 8px;
+}
+#header h1 { font-size: 18px; flex: 1; }
+#session-select { font-size: 13px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; }
+#btn-new-session { font-size: 13px; padding: 4px 10px; background: #4CAF50; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+
+#messages {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.msg { max-width: 90%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.6; word-break: break-word; }
+.msg.user { align-self: flex-end; background: #1890ff; color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant { align-self: flex-start; background: #fff; border: 1px solid #e8e8e8; border-bottom-left-radius: 4px; }
+.msg .route-card {
+  margin-top: 8px; padding: 10px;
+  background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 8px;
+  font-size: 13px;
+}
+.msg .route-card .stat { font-weight: bold; color: #52c41a; }
+.msg .tool-indicator { font-size: 12px; color: #999; font-style: italic; }
+
+#actions {
+  padding: 8px 16px;
+  display: flex; gap: 8px;
+  border-top: 1px solid #e0e0e0;
+  background: #fff;
+}
+#actions button {
+  padding: 6px 12px; font-size: 13px;
+  border: 1px solid #d9d9d9; border-radius: 6px;
+  background: #fff; cursor: pointer;
+}
+#actions button:hover { border-color: #1890ff; color: #1890ff; }
+
+#input-area {
+  padding: 12px 16px;
+  background: #fff;
+  border-top: 1px solid #e0e0e0;
+  display: flex; gap: 8px;
+}
+#message-input {
+  flex: 1; padding: 10px 14px;
+  border: 1px solid #d9d9d9; border-radius: 8px;
+  font-size: 14px; outline: none;
+}
+#message-input:focus { border-color: #1890ff; }
+#btn-send {
+  padding: 10px 20px;
+  background: #1890ff; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 14px; cursor: pointer;
+}
+#btn-send:disabled { background: #ccc; cursor: not-allowed; }
+
+#map-container { flex: 1; position: relative; }
+#map { width: 100%; height: 100%; }
+
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); }
+.modal.show { display: flex; align-items: center; justify-content: center; }
+.modal-content {
+  background: #fff; padding: 24px; border-radius: 12px;
+  width: 400px; max-width: 90vw;
+}
+.modal-content h3 { margin-bottom: 16px; }
+.modal-content label { display: block; font-size: 13px; margin-bottom: 4px; color: #666; }
+.modal-content input { width: 100%; padding: 8px 12px; margin-bottom: 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }
+.modal-content .checkbox-row { display: flex; gap: 16px; margin-bottom: 12px; font-size: 13px; }
+.modal-content .btn-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal-content button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; }
+.modal-content .btn-primary { background: #1890ff; color: #fff; }
+.modal-content .btn-cancel { background: #f0f0f0; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebar">
+    <div id="header">
+      <h1>骑行路线助手</h1>
+      <select id="session-select"></select>
+      <button id="btn-new-session">+新建</button>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="actions">
+      <button onclick="showRouteForm()">规划路线</button>
+      <button onclick="showSearchForm()">附近搜寻</button>
+    </div>
+
+    <div id="input-area">
+      <input type="text" id="message-input" placeholder="输入消息，如「从朝阳公园骑到颐和园」" onkeydown="if(event.key==='Enter')sendMessage()">
+      <button id="btn-send" onclick="sendMessage()">发送</button>
+    </div>
+  </div>
+
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+</div>
+
+<!-- Route planning modal -->
+<div id="route-modal" class="modal">
+<div class="modal-content">
+  <h3>规划骑行路线</h3>
+  <label>起点</label>
+  <input type="text" id="route-origin" placeholder="例：朝阳公园">
+  <label>终点</label>
+  <input type="text" id="route-destination" placeholder="例：颐和园">
+  <label>途经点（可选）</label>
+  <input type="text" id="route-waypoints" placeholder="多个用逗号分隔">
+  <div class="checkbox-row">
+    <label><input type="checkbox" id="route-avoid-highway"> 避开高速</label>
+    <label><input type="checkbox" id="route-greenway" checked> 偏好绿道</label>
+  </div>
+  <div class="btn-row">
+    <button class="btn-cancel" onclick="closeModal('route-modal')">取消</button>
+    <button class="btn-primary" onclick="planRoute()">开始规划</button>
+  </div>
+</div>
+</div>
+
+<!-- Search modal -->
+<div id="search-modal" class="modal">
+<div class="modal-content">
+  <h3>附近搜寻</h3>
+  <label>搜索内容</label>
+  <input type="text" id="search-query" placeholder="例：便利店、修车店、咖啡店">
+  <div class="btn-row">
+    <button class="btn-cancel" onclick="closeModal('search-modal')">取消</button>
+    <button class="btn-primary" onclick="searchNearby()">搜索</button>
+  </div>
+</div>
+</div>
+
+<script src="https://api.map.baidu.com/api?type=webgl&v=1.0&ak=A5m1aCzeqQE4zPQzObxX986gSvLWpsiC"></script>
+<script>
+// ==============================
+// State
+// ==============================
+let threadId = localStorage.getItem('cycling-thread-id') || '';
+let map = null;
+let currentMarkers = [];
+let abortController = null;
+
+// ==============================
+// Session Management
+// ==============================
+async function loadSessions() {
+  try {
+    const resp = await fetch('/api/sessions');
+    const data = await resp.json();
+    const sel = document.getElementById('session-select');
+    sel.innerHTML = '<option value="">新建会话</option>';
+    data.sessions.forEach(s => {
+      sel.innerHTML += `<option value="${s.thread_id}" ${s.thread_id === threadId ? 'selected' : ''}>${s.thread_id} (${s.turns}轮)</option>`;
+    });
+  } catch(e) {
+    console.error('Failed to load sessions:', e);
+  }
+}
+
+document.getElementById('session-select').onchange = function() {
+  threadId = this.value || '';
+  if (threadId) {
+    localStorage.setItem('cycling-thread-id', threadId);
+  } else {
+    localStorage.removeItem('cycling-thread-id');
+  }
+  document.getElementById('messages').innerHTML = '';
+  clearMap();
+};
+
+document.getElementById('btn-new-session').onclick = async function() {
+  try {
+    const resp = await fetch('/api/sessions', { method: 'POST' });
+    const data = await resp.json();
+    threadId = data.thread_id;
+    localStorage.setItem('cycling-thread-id', threadId);
+    document.getElementById('messages').innerHTML = '';
+    clearMap();
+    await loadSessions();
+    document.getElementById('session-select').value = threadId;
+  } catch(e) {
+    console.error('Failed to create session:', e);
+  }
+};
+
+// ==============================
+// Map
+// ==============================
+function initMap() {
+  map = new BMapGL.Map('map');
+  map.centerAndZoom(new BMapGL.Point(116.404, 39.915), 12);
+  map.enableScrollWheelZoom();
+}
+
+function clearMap() {
+  if (!map) return;
+  map.clearOverlays();
+  currentMarkers = [];
+}
+
+function drawRoute(routeData) {
+  clearMap();
+
+  let origin, destination, points = [], pois = [];
+  let distance = 0, duration = 0;
+
+  // Parse string to object if needed
+  try {
+    if (typeof routeData === 'string') routeData = JSON.parse(routeData);
+  } catch(e) { return; }
+
+  // Unwrap Baidu MCP "result" wrapper: { status, result: {...} }
+  if (routeData.result) routeData = routeData.result;
+
+  // Extract route info: look for routes array (map_directions format)
+  if (routeData.routes && routeData.routes.length > 0) {
+    const route = routeData.routes[0];
+    distance = route.distance || 0;
+    duration = route.duration || 0;
+    if (route.steps) {
+      for (const step of route.steps) {
+        if (step.path) {
+          for (const pt of step.path.split(';')) {
+            const [lng, lat] = pt.split(',').map(Number);
+            if (!isNaN(lng) && !isNaN(lat)) points.push(new BMapGL.Point(lng, lat));
+          }
+        }
+      }
+    }
+  }
+
+  // Origin/destination from response
+  if (routeData.origin) origin = routeData.origin;
+  if (routeData.destination) destination = routeData.destination;
+
+  // Fallback: draw straight line if no step paths
+  if (points.length === 0 && origin && destination) {
+    points.push(new BMapGL.Point(origin.lng, origin.lat));
+    points.push(new BMapGL.Point(destination.lng, destination.lat));
+    distance = routeData.distance || distance;
+    duration = routeData.duration || duration;
+  }
+
+  // Extract POIs: from map_search_places response { results: [...] }
+  // Each POI: { name, location: { lat, lng }, address }
+  if (routeData.results) {
+    pois = routeData.results;
+  } else if (routeData.pois) {
+    pois = routeData.pois;
+  }
+
+  if (points.length === 0 && pois.length === 0) return;
+
+  // Draw polyline
+  if (points.length > 0) {
+    const polyline = new BMapGL.Polyline(points, {
+      strokeColor: '#1890ff',
+      strokeWeight: 6,
+      strokeOpacity: 0.8,
+    });
+    map.addOverlay(polyline);
+
+    // Start/end markers
+    if (points.length >= 2) {
+      const startPt = points[0];
+      const endPt = points[points.length - 1];
+
+      const startMarker = new BMapGL.Marker(startPt,
+        { title: origin ? origin.name || '起点' : '起点' });
+      map.addOverlay(startMarker);
+      currentMarkers.push(startMarker);
+
+      const endMarker = new BMapGL.Marker(endPt,
+        { title: destination ? destination.name || '终点' : '终点' });
+      map.addOverlay(endMarker);
+      currentMarkers.push(endMarker);
+    }
+
+    map.setViewport(points);
+  }
+
+  // POI markers
+  for (const poi of pois) {
+    let pt = null;
+    // map_search_places format: { location: { lat, lng } }
+    if (poi.location && poi.location.lng != null && poi.location.lat != null) {
+      pt = new BMapGL.Point(Number(poi.location.lng), Number(poi.location.lat));
+    }
+    // map_directions step format: { start_location: { lng, lat } }
+    else if (poi.start_location && poi.start_location.lng) {
+      pt = new BMapGL.Point(Number(poi.start_location.lng), Number(poi.start_location.lat));
+    }
+
+    if (pt) {
+      const m = new BMapGL.Marker(pt);
+      const name = escapeHtml(poi.name || '');
+      const addr = escapeHtml(poi.address || '');
+      m.addEventListener('click', function() {
+        const iw = new BMapGL.InfoWindow(
+          `<strong>${name}</strong><br>${addr}`,
+          { width: 200 }
+        );
+        map.openInfoWindow(iw, pt);
+      });
+      map.addOverlay(m);
+      currentMarkers.push(m);
+    }
+  }
+}
+
+// ==============================
+// SSE Chat
+// ==============================
+function addMessage(role, content) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = content;
+  document.getElementById('messages').appendChild(div);
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+  return div;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('message-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  addMessage('user', escapeHtml(text));
+  input.value = '';
+
+  const btn = document.getElementById('btn-send');
+  btn.disabled = true;
+
+  // Abort any previous stream
+  if (abortController) abortController.abort();
+  abortController = new AbortController();
+
+  const assistantDiv = addMessage('assistant', '思考中...');
+  let fullText = '';
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, thread_id: threadId }),
+      signal: abortController.signal,
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+          continue;
+        }
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            switch (currentEvent) {
+              case 'token':
+                fullText += data.text;
+                assistantDiv.innerHTML = formatText(fullText);
+                break;
+              case 'route':
+                assistantDiv.innerHTML = formatText(fullText) + buildRouteCard(data);
+                drawRoute(data);
+                break;
+              case 'tool_start':
+                assistantDiv.innerHTML = fullText || `<span class="tool-indicator">正在调用 ${data.tool}...</span>`;
+                break;
+              case 'done':
+                if (data.thread_id) {
+                  threadId = data.thread_id;
+                  localStorage.setItem('cycling-thread-id', threadId);
+                  await loadSessions();
+                }
+                break;
+            }
+          } catch(e) {}
+        }
+      }
+    }
+
+    if (!fullText) assistantDiv.innerHTML = '(无回复)';
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      assistantDiv.innerHTML = '请求失败: ' + e.message;
+    }
+  }
+
+  btn.disabled = false;
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+}
+
+// ==============================
+// Route Planning
+// ==============================
+function showRouteForm() {
+  document.getElementById('route-modal').classList.add('show');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+async function planRoute() {
+  const origin = document.getElementById('route-origin').value.trim();
+  const destination = document.getElementById('route-destination').value.trim();
+  if (!origin || !destination) return;
+
+  const waypointsRaw = document.getElementById('route-waypoints').value.trim();
+  const waypoints = waypointsRaw ? waypointsRaw.split(/[,，]/).map(s => s.trim()).filter(Boolean) : null;
+
+  closeModal('route-modal');
+
+  const waypointText = waypoints ? ` (途经：${waypoints.join('、')})` : '';
+  addMessage('user', `规划路线：<strong>${escapeHtml(origin)}</strong> → <strong>${escapeHtml(destination)}</strong>${waypointText}`);
+
+  const assistantDiv = addMessage('assistant', '规划路线中...');
+  let fullText = '';
+
+  if (abortController) abortController.abort();
+  abortController = new AbortController();
+
+  try {
+    const resp = await fetch('/api/route/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origin, destination, waypoints,
+        avoid_highway: document.getElementById('route-avoid-highway').checked,
+        prefer_greenway: document.getElementById('route-greenway').checked,
+        thread_id: threadId,
+      }),
+      signal: abortController.signal,
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+          continue;
+        }
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (currentEvent === 'token') {
+              fullText += data.text;
+              assistantDiv.innerHTML = formatText(fullText);
+            } else if (currentEvent === 'route') {
+              assistantDiv.innerHTML = formatText(fullText) + buildRouteCard(data);
+              drawRoute(data);
+            } else if (currentEvent === 'done') {
+              if (data.thread_id) {
+                threadId = data.thread_id;
+                localStorage.setItem('cycling-thread-id', threadId);
+                await loadSessions();
+              }
+            }
+          } catch(e) {}
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      assistantDiv.innerHTML = '路线规划失败: ' + e.message;
+    }
+  }
+
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+}
+
+// ==============================
+// Nearby Search
+// ==============================
+function showSearchForm() {
+  document.getElementById('search-modal').classList.add('show');
+}
+
+async function searchNearby() {
+  const query = document.getElementById('search-query').value.trim();
+  if (!query || !map) return;
+
+  closeModal('search-modal');
+
+  const center = map.getCenter();
+  const msg = `搜索附近 "${query}" (${center.lng.toFixed(4)}, ${center.lat.toFixed(4)})`;
+  addMessage('user', escapeHtml(msg));
+
+  const fullMsg = `请在地图中心坐标 (${center.lng}, ${center.lat}) 周边搜索「${query}」，并将结果标记在地图上。`;
+  document.getElementById('message-input').value = fullMsg;
+  sendMessage();
+}
+
+// ==============================
+// Helpers
+// ==============================
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatText(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+function buildRouteCard(data) {
+  let dist = '?';
+  let dur = '?';
+  if (data.distance) {
+    dist = data.distance >= 1000
+      ? (data.distance / 1000).toFixed(1) + ' km'
+      : data.distance + ' m';
+  }
+  if (data.duration) {
+    dur = data.duration >= 3600
+      ? Math.floor(data.duration / 3600) + 'h ' + Math.round((data.duration % 3600) / 60) + 'min'
+      : Math.round(data.duration / 60) + ' 分钟';
+  }
+  return `<div class="route-card">
+    <div><span class="stat">距离：</span>${dist}</div>
+    <div><span class="stat">预计时间：</span>${dur}</div>
+  </div>`;
+}
+
+// ==============================
+// Init
+// ==============================
+initMap();
+loadSessions();
+document.getElementById('message-input').focus();
+</script>
+</body>
+</html>

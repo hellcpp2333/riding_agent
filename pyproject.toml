@@ -1,0 +1,25 @@
+[project]
+name = "bike-route-planner"
+version = "0.1.0"
+description = "骑行路线规划助手 Web 应用"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.30.0",
+    "sse-starlette>=1.8.0",
+    "mcp>=1.0.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = []
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true

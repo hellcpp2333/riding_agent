@@ -1,0 +1,23 @@
+{
+  "checkpoint_sqlite": {
+    "path": "checkpoints.db"
+  },
+  "agent_config": {
+    "model": "glm-5",
+    "temperature": 0,
+    "thinking": "disabled",
+    "tools": [
+      "map_directions",
+      "map_geocode",
+      "map_reverse_geocode",
+      "map_search_places",
+      "map_place_details",
+      "map_weather",
+      "map_directions_matrix"
+    ]
+  },
+  "graphs": {
+        "riding_agent": "./app/agents/agent.py:agent"
+    },
+      "env": "D:\\Programming\\langchain_dev\\.env"
+}
