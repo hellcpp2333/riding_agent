@@ -1,47 +1,42 @@
 import json
+import uuid
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
-from sse_starlette.sse import EventSourceResponse
-
-import uuid
-
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.v1.schemas import ChatRequest, RoutePlanRequest
+from app.auth.dependencies import get_current_user
 from app.db import list_sessions
+from app.models import User
 
 router = APIRouter()
 
 
-@router.get("/")
-async def root():
-    return FileResponse("static/index.html")
-
-
 @router.get("/api/sessions")
-async def get_sessions():
+async def get_sessions(user: User = Depends(get_current_user)):
     return {"sessions": list_sessions()}
 
 
 @router.post("/api/sessions")
-async def create_session():
+async def create_session(user: User = Depends(get_current_user)):
     tid = uuid.uuid4().hex[:8]
     return {"thread_id": tid}
 
 
 @router.post("/api/chat")
-async def chat(req: ChatRequest, request: Request):
+async def chat(
+    req: ChatRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     thread_id = req.thread_id or uuid.uuid4().hex[:8]
 
     async def event_generator() -> AsyncGenerator[dict, None]:
         input_msg = req.message
         if req.preferences:
             input_msg = (
-                f"用户偏好设置：{json.dumps(req.preferences, ensure_ascii=False)}\n\n"
+                f"{user.username}的偏好设置：{json.dumps(req.preferences, ensure_ascii=False)}\n\n"
                 f"用户消息：{req.message}"
             )
 
@@ -97,11 +92,15 @@ async def chat(req: ChatRequest, request: Request):
 
 
 @router.post("/api/route/plan")
-async def plan_route(req: RoutePlanRequest, request: Request):
+async def plan_route(
+    req: RoutePlanRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     thread_id = req.thread_id or uuid.uuid4().hex[:8]
 
     prompt_parts = [
-        f"请规划从「{req.origin}」到「{req.destination}」的骑行路线。",
+        f"请为{user.username}规划从「{req.origin}」到「{req.destination}」的骑行路线。",
     ]
     if req.waypoints:
         prompt_parts.append(f"途经点：{'、'.join(req.waypoints)}。")
