@@ -61,3 +61,53 @@ def parse_gpx(file_data: bytes) -> tuple[str, list[dict], float, float]:
             elevation_gain += ele_diff
 
     return (name, points, distance, elevation_gain)
+
+
+import os
+import time
+import uuid
+
+import oss2
+
+OSS_ACCESS_KEY_ID = os.environ.get("OSS_ACCESS_KEY_ID", "")
+OSS_ACCESS_KEY_SECRET = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
+OSS_BUCKET_NAME = os.environ.get("OSS_BUCKET_NAME", "")
+OSS_ENDPOINT = os.environ.get("OSS_ENDPOINT", "oss-cn-shenzhen.aliyuncs.com")
+
+MAX_GPX_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _get_bucket():
+    auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+    return oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET_NAME)
+
+
+def upload_gpx_to_oss(file_data: bytes, filename: str, user_id: int) -> str:
+    bucket = _get_bucket()
+    ext = ".gpx"
+    object_key = f"routes/{user_id}/{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    bucket.put_object(object_key, file_data)
+    return f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}"
+
+
+def download_gpx_from_oss(oss_url: str) -> bytes:
+    bucket = _get_bucket()
+    object_key = _extract_object_key(oss_url)
+    result = bucket.get_object(object_key)
+    return result.read()
+
+
+def delete_gpx_from_oss(oss_url: str) -> None:
+    bucket = _get_bucket()
+    try:
+        object_key = _extract_object_key(oss_url)
+        bucket.delete_object(object_key)
+    except Exception:
+        pass
+
+
+def _extract_object_key(oss_url: str) -> str:
+    prefix = f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/"
+    if oss_url.startswith(prefix):
+        return oss_url[len(prefix):]
+    return oss_url.split("/", 3)[-1] if "://" in oss_url else oss_url
