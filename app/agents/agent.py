@@ -35,6 +35,9 @@ SYSTEM_PROMPT = (
     "3. 查询天气：使用 map_weather 了解骑行当天的天气状况\n"
     "4. 地点查询：使用 map_geocode/map_reverse_geocode 查找特定地点\n"
     "5. 多路线对比：使用 map_directions_matrix 比较多个起终点的路线\n\n"
+    "6. 路书管理：使用 list_user_routes 查看用户保存的路书，使用 get_route_detail 查看路书详情\n"
+    "7. 当用户提到路书时，主动使用路书相关工具\n"
+    "8. 分析路书时告知距离、爬升、难度评估\n\n"
     "工作流程：\n"
     "- 用户提出路线规划时，直接用 map_directions(model='riding') 规划，"
     "起点终点直接传中文地址名，不需要先调用地理编码\n"
@@ -219,6 +222,84 @@ def build_agent(checkpointer):
             "model": model,
         })
 
+    @tool
+    def list_user_routes(user_id: int) -> str:
+        """列出用户保存的所有路书。返回路书列表（id、名称、距离、时间）。"""
+        import asyncio as _asyncio_list
+        from app.models import Route as RouteModel
+
+        async def _query():
+            from app.db_mysql import async_session_factory
+            from sqlalchemy import select
+            assert async_session_factory is not None
+            async with async_session_factory() as db:
+                result = await db.execute(
+                    select(RouteModel)
+                    .where(RouteModel.user_id == user_id)
+                    .order_by(RouteModel.created_at.desc())
+                )
+                routes = result.scalars().all()
+                if not routes:
+                    return "你还没有保存任何路书。"
+                lines = []
+                for r in routes:
+                    dist_km = r.distance / 1000
+                    date_str = r.created_at.strftime("%Y-%m-%d") if r.created_at else ""
+                    lines.append(
+                        f"  [{r.id}] {r.name} — {dist_km:.1f}km, "
+                        f"爬升{r.elevation_gain:.0f}m, {r.track_points}个轨迹点, "
+                        f"来源:{r.source}, {date_str}"
+                    )
+                return "你的路书：\n" + "\n".join(lines)
+        return _asyncio_list.run(_query())
+
+    @tool
+    def get_route_detail(user_id: int, route_id: int) -> str:
+        """读取路书详情。返回距离、爬升、轨迹点数，以及采样后的轨迹点坐标。"""
+        import asyncio as _asyncio_detail
+        from app.models import Route as RouteModel
+        from app.services.route_service import download_gpx_from_oss, parse_gpx
+
+        async def _query():
+            from app.db_mysql import async_session_factory
+            from sqlalchemy import select
+            assert async_session_factory is not None
+            async with async_session_factory() as db:
+                result = await db.execute(
+                    select(RouteModel).where(RouteModel.id == route_id)
+                )
+                route = result.scalar_one_or_none()
+                if route is None:
+                    return "路书不存在。"
+                if route.user_id != user_id:
+                    return "无权访问该路书。"
+
+                gpx_data = download_gpx_from_oss(route.gpx_oss_url)
+                _, points, _, _ = parse_gpx(gpx_data)
+
+                dist_km = route.distance / 1000
+                total = len(points)
+
+                # 采样：最多返回 30 个点
+                sample = points
+                if total > 30:
+                    step = total // 30
+                    sample = [points[i] for i in range(0, total, step)][:30]
+                    if points[-1] not in sample:
+                        sample.append(points[-1])
+
+                coords = ", ".join(
+                    [f"({p['lat']:.4f},{p['lon']:.4f})" for p in sample]
+                )
+                return (
+                    f"路书「{route.name}」详情：\n"
+                    f"  距离: {dist_km:.1f} km\n"
+                    f"  累计爬升: {route.elevation_gain:.0f} m\n"
+                    f"  轨迹点总数: {total}\n"
+                    f"  采样坐标 ({len(sample)}个): {coords}"
+                )
+        return _asyncio_detail.run(_query())
+
     tools = [
         map_directions,
         map_geocode,
@@ -227,6 +308,8 @@ def build_agent(checkpointer):
         map_place_details,
         map_weather,
         map_directions_matrix,
+        list_user_routes,
+        get_route_detail,
     ]
     llm_with_tools = llm.bind_tools(tools)
 
