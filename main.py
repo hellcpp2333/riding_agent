@@ -25,6 +25,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.agents import build_agent
 from app.api.v1 import router as api_v1_router
 from app.auth.routes import router as auth_router
+from app.api.v1.route_routes import router as route_router
 from app.api.v1.user_routes import router as user_router
 from app.db import DB_PATH
 from app.db_mysql import dispose_mysql, init_db, init_mysql_engine
@@ -55,6 +56,7 @@ app = FastAPI(lifespan=lifespan)
 # Include API routes
 app.include_router(api_v1_router)
 app.include_router(auth_router)
+app.include_router(route_router)
 app.include_router(user_router)
 
 
