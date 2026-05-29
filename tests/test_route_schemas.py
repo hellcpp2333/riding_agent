@@ -1,13 +1,17 @@
+from datetime import datetime
+
 from app.api.v1.schemas import RouteImportResponse, RouteListItem, RouteDetailResponse, RouteExportPlanRequest
 
 
 def test_route_import_response():
     resp = RouteImportResponse(
+        id=1,
         name="南昆山",
         distance=50000.0,
         elevation_gain=800.0,
         track_points=2000,
     )
+    assert resp.id == 1
     assert resp.name == "南昆山"
     assert resp.distance == 50000.0
 
@@ -18,7 +22,7 @@ def test_route_list_item():
         name="南昆山",
         distance=50000.0,
         source="import",
-        created_at="2026-05-29T12:00:00",
+        created_at=datetime(2026, 5, 29, 12, 0, 0),
     )
     assert item.id == 1
     assert item.source == "import"
@@ -32,7 +36,7 @@ def test_route_detail_response():
         elevation_gain=800.0,
         track_points=2000,
         source="import",
-        created_at="2026-05-29T12:00:00",
+        created_at=datetime(2026, 5, 29, 12, 0, 0),
         track_data=[{"lat": 23.615, "lon": 113.848, "ele": 721}],
     )
     assert len(detail.track_data) == 1

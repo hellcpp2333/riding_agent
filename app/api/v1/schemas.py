@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -17,6 +19,7 @@ class RoutePlanRequest(BaseModel):
 
 
 class RouteImportResponse(BaseModel):
+    id: int
     name: str
     distance: float
     elevation_gain: float
@@ -28,7 +31,10 @@ class RouteListItem(BaseModel):
     name: str
     distance: float
     source: str
-    created_at: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class TrackPoint(BaseModel):
@@ -45,8 +51,11 @@ class RouteDetailResponse(BaseModel):
     elevation_gain: float
     track_points: int
     source: str
-    created_at: str
+    created_at: datetime
     track_data: list[TrackPoint]
+
+    class Config:
+        from_attributes = True
 
 
 class RouteExportPlanRequest(BaseModel):
