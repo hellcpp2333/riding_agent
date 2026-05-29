@@ -318,6 +318,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; h
       <div id="actions" v-show="currentTab === 'chat'">
         <button @click="showRouteForm">规划路线</button>
         <button @click="showSearchForm">附近搜寻</button>
+        <button v-if="lastChatRouteData" @click="exportChatRoute" style="background:#52c41a;color:#fff;border-color:#52c41a">导出 GPX</button>
       </div>
 
       <div id="input-area" v-show="currentTab === 'chat'">
@@ -444,6 +445,7 @@ const app = createApp({
     const showRouteModal = ref(false);
     const showSearchModal = ref(false);
     const searchQuery = ref('');
+    const lastChatRouteData = ref(null);
 
     const routeForm = reactive({
       origin: '',
@@ -900,6 +902,7 @@ const app = createApp({
                   case 'route':
                     assistantMsg.content = formatText(fullText) + buildRouteCard(data);
                     drawRoute(data);
+                    lastChatRouteData.value = data;
                     break;
                   case 'tool_start':
                     assistantMsg.content = fullText || `<span class="tool-indicator">正在调用 ${data.tool}...</span>`;
@@ -1184,6 +1187,59 @@ const app = createApp({
       }
     }
 
+    function extractCoordsFromChatRoute(routeData) {
+      const coords = [];
+      try {
+        let d = routeData;
+        if (d.result) d = d.result;
+        if (d.routes && d.routes.length > 0) {
+          for (const step of d.routes[0].steps || []) {
+            if (step.path) {
+              for (const pt of step.path.split(';')) {
+                const [lng, lat] = pt.split(',').map(Number);
+                if (!isNaN(lng) && !isNaN(lat)) coords.push({ lat, lon: lng, ele: 0 });
+              }
+            }
+          }
+        }
+      } catch (e) { }
+      return coords;
+    }
+
+    async function exportChatRoute() {
+      const routeData = lastChatRouteData.value;
+      if (!routeData) return;
+      const coords = extractCoordsFromChatRoute(routeData);
+      if (coords.length === 0) {
+        ElMessage.error('未找到路线坐标');
+        return;
+      }
+      try {
+        const resp = await fetch('/api/routes/export-plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('auth-token')}`,
+          },
+          body: JSON.stringify({ name: '路线规划', coordinates: coords }),
+        });
+        if (!resp.ok) {
+          ElMessage.error('导出失败');
+          return;
+        }
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'route-plan.gpx';
+        a.click();
+        window.URL.revokeObjectURL(url);
+        ElMessage.success('已导出 GPX');
+      } catch (e) {
+        ElMessage.error('导出失败: ' + e.message);
+      }
+    }
+
     async function deleteRouteConfirm(routeId) {
       try {
         await ElMessageBox.confirm('确定要删除这条路书吗？', '确认删除', {
@@ -1283,6 +1339,8 @@ const app = createApp({
       selectRoute,
       exportRoute,
       deleteRouteConfirm,
+      lastChatRouteData,
+      exportChatRoute,
     };
   },
 });
