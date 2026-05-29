@@ -35,10 +35,6 @@ def parse_gpx(file_data: bytes) -> tuple[str, list[dict], float, float]:
     if not trkpt_elements:
         trkpt_elements = root.findall(".//gpx:trkpt", ns_11)
     if not trkpt_elements:
-        trkpt_elements = root.findall(".//{http://www.topografix.com/GPX/1/0}trkpt")
-    if not trkpt_elements:
-        trkpt_elements = root.findall(".//{http://www.topografix.com/GPX/1/1}trkpt")
-    if not trkpt_elements:
         trkpt_elements = root.findall(".//trkpt")
 
     for pt in trkpt_elements:

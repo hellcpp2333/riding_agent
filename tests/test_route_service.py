@@ -1,4 +1,3 @@
-import os
 from app.services.route_service import parse_gpx, haversine_distance
 
 
