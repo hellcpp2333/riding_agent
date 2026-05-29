@@ -70,6 +70,27 @@ import uuid
 MAX_GPX_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+def generate_gpx(name: str, coordinates: list) -> str:
+    """根据坐标数组生成 GPX XML 字符串"""
+    points_xml = ""
+    for pt in coordinates:
+        lat = pt.lat if hasattr(pt, "lat") else pt["lat"]
+        lon = pt.lon if hasattr(pt, "lon") else pt["lon"]
+        ele = pt.ele if hasattr(pt, "ele") else pt.get("ele", 0)
+        if ele is None:
+            ele = 0
+        points_xml += f'      <trkpt lat="{lat}" lon="{lon}">\n        <ele>{ele}</ele>\n      </trkpt>\n'
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/0" version="1.0" creator="骑行助手">
+  <name>{name}</name>
+  <trk>
+    <trkseg>
+{points_xml}    </trkseg>
+  </trk>
+</gpx>"""
+
+
 def _get_oss_config():
     return {
         "access_key_id": os.environ.get("OSS_ACCESS_KEY_ID", ""),
