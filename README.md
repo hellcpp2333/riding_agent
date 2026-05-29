@@ -1,6 +1,6 @@
 # 骑行路线助手
 
-基于 LLM Agent 的骑行路线规划 Web 应用，支持自然语言对话和结构化路线查询。
+基于 LLM Agent 的骑行路线规划 Web 应用，支持自然语言对话、路线规划、路书导入导出。
 
 ## 功能
 
@@ -10,6 +10,10 @@
 - 天气查询
 - 多路线对比
 - 对话记忆（自动摘要，支持多会话）
+- **路书导入** — 上传 `.gpx` 文件（行者、Strava 等 App 导出格式），自动解析距离、爬升
+- **路书管理** — 列表查看、地图预览、删除管理
+- **路书导出** — 已保存路书一键下载 GPX，Agent 规划的路线也可导出
+- **Agent 路书分析** — 对话框中让 Agent 分析已保存路书的距离、爬升、难度
 
 ## 技术栈
 
@@ -20,7 +24,7 @@
 | 地图 | 百度地图 MCP Server + BMapGL |
 | 数据库 | SQLite（LangGraph checkpoints）+ MySQL（用户数据） |
 | 缓存 | Redis（会话管理） |
-| 存储 | 阿里云 OSS（头像上传） |
+| 存储 | 阿里云 OSS（头像 + GPX 文件） |
 
 ## 快速开始
 
@@ -79,6 +83,12 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | GET | `/api/auth/me` | 当前用户信息 |
 | GET/PUT | `/api/user/profile` | 获取/更新用户资料 |
 | POST | `/api/user/avatar` | 上传头像 |
+| POST | `/api/routes/import` | 导入 GPX 路书 |
+| GET | `/api/routes` | 路书列表 |
+| GET | `/api/routes/{id}` | 路书详情（含轨迹坐标） |
+| GET | `/api/routes/{id}/export` | 下载 GPX 文件 |
+| DELETE | `/api/routes/{id}` | 删除路书 |
+| POST | `/api/routes/export-plan` | 导出规划路线为 GPX |
 
 ## 项目结构
 
@@ -89,26 +99,29 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 │   │   └── agent.py        # LangGraph Agent
 │   ├── api/
 │   │   └── v1/
-│   │       ├── routes.py   # API 路由
-│   │       ├── schemas.py  # 数据模型
-│   │       └── user_routes.py  # 用户相关路由
+│   │       ├── routes.py         # 对话与路线规划 API
+│   │       ├── schemas.py        # 数据模型
+│   │       ├── user_routes.py    # 用户相关路由
+│   │       └── route_routes.py   # 路书导入导出 API
 │   ├── auth/
-│   │   ├── routes.py       # 认证路由
-│   │   ├── utils.py        # JWT 工具
-│   │   └── dependencies.py # 认证依赖
-│   ├── db.py               # SQLite 工具
-│   ├── db_mysql.py         # MySQL 工具
-│   ├── redis_client.py     # Redis 客户端
-│   ├── models.py           # ORM 模型
+│   │   ├── routes.py             # 认证路由
+│   │   ├── utils.py              # JWT 工具
+│   │   └── dependencies.py       # 认证依赖
+│   ├── db.py                     # SQLite 工具
+│   ├── db_mysql.py               # MySQL 工具
+│   ├── redis_client.py           # Redis 客户端
+│   ├── models.py                 # ORM 模型
 │   └── services/
-│       └── oss_service.py  # OSS 上传服务
+│       ├── oss_service.py        # OSS 上传服务（头像）
+│       └── route_service.py      # GPX 解析、距离计算、OSS 操作
 ├── main.py                 # FastAPI 入口
-├── static/index.html       # 前端页面
-├── langgraph.json          # LangGraph 配置
-├── docker-compose.yml      # 本地开发数据库
-├── pyproject.toml          # 项目配置与依赖
-├── .env.example            # 环境变量模板
-└── .env                    # 环境变量（不提交）
+├── static/index.html             # 前端页面
+├── tests/                        # 测试
+├── langgraph.json                # LangGraph 配置
+├── docker-compose.yml            # 本地开发数据库
+├── pyproject.toml                # 项目配置与依赖
+├── .env.example                  # 环境变量模板
+└── .env                          # 环境变量（不提交）
 ```
 
 ## 许可
