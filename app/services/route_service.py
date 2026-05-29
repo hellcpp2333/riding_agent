@@ -67,27 +67,31 @@ import os
 import time
 import uuid
 
-import oss2
-
-OSS_ACCESS_KEY_ID = os.environ.get("OSS_ACCESS_KEY_ID", "")
-OSS_ACCESS_KEY_SECRET = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
-OSS_BUCKET_NAME = os.environ.get("OSS_BUCKET_NAME", "")
-OSS_ENDPOINT = os.environ.get("OSS_ENDPOINT", "oss-cn-shenzhen.aliyuncs.com")
-
 MAX_GPX_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+def _get_oss_config():
+    return {
+        "access_key_id": os.environ.get("OSS_ACCESS_KEY_ID", ""),
+        "access_key_secret": os.environ.get("OSS_ACCESS_KEY_SECRET", ""),
+        "bucket_name": os.environ.get("OSS_BUCKET_NAME", ""),
+        "endpoint": os.environ.get("OSS_ENDPOINT", "oss-cn-shenzhen.aliyuncs.com"),
+    }
+
+
 def _get_bucket():
-    auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
-    return oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET_NAME)
+    import oss2
+    cfg = _get_oss_config()
+    auth = oss2.Auth(cfg["access_key_id"], cfg["access_key_secret"])
+    return oss2.Bucket(auth, cfg["endpoint"], cfg["bucket_name"])
 
 
 def upload_gpx_to_oss(file_data: bytes, filename: str, user_id: int) -> str:
+    cfg = _get_oss_config()
     bucket = _get_bucket()
-    ext = ".gpx"
-    object_key = f"routes/{user_id}/{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    object_key = f"routes/{user_id}/{int(time.time())}_{uuid.uuid4().hex[:8]}.gpx"
     bucket.put_object(object_key, file_data)
-    return f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{object_key}"
+    return f"https://{cfg['bucket_name']}.{cfg['endpoint']}/{object_key}"
 
 
 def download_gpx_from_oss(oss_url: str) -> bytes:
@@ -107,7 +111,8 @@ def delete_gpx_from_oss(oss_url: str) -> None:
 
 
 def _extract_object_key(oss_url: str) -> str:
-    prefix = f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/"
+    cfg = _get_oss_config()
+    prefix = f"https://{cfg['bucket_name']}.{cfg['endpoint']}/"
     if oss_url.startswith(prefix):
         return oss_url[len(prefix):]
     return oss_url.split("/", 3)[-1] if "://" in oss_url else oss_url
