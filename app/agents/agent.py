@@ -225,80 +225,73 @@ def build_agent(checkpointer):
     @tool
     def list_user_routes(user_id: int) -> str:
         """列出用户保存的所有路书。返回路书列表（id、名称、距离、时间）。"""
-        import asyncio as _asyncio_list
         from app.models import Route as RouteModel
+        from app.db_mysql import sync_session_factory
+        from sqlalchemy import select
 
-        async def _query():
-            from app.db_mysql import async_session_factory
-            from sqlalchemy import select
-            assert async_session_factory is not None
-            async with async_session_factory() as db:
-                result = await db.execute(
-                    select(RouteModel)
-                    .where(RouteModel.user_id == user_id)
-                    .order_by(RouteModel.created_at.desc())
+        assert sync_session_factory is not None
+        with sync_session_factory() as db:
+            result = db.execute(
+                select(RouteModel)
+                .where(RouteModel.user_id == user_id)
+                .order_by(RouteModel.created_at.desc())
+            )
+            routes = result.scalars().all()
+            if not routes:
+                return "你还没有保存任何路书。"
+            lines = []
+            for r in routes:
+                dist_km = r.distance / 1000
+                date_str = r.created_at.strftime("%Y-%m-%d") if r.created_at else ""
+                lines.append(
+                    f"  [{r.id}] {r.name} — {dist_km:.1f}km, "
+                    f"爬升{r.elevation_gain:.0f}m, {r.track_points}个轨迹点, "
+                    f"来源:{r.source}, {date_str}"
                 )
-                routes = result.scalars().all()
-                if not routes:
-                    return "你还没有保存任何路书。"
-                lines = []
-                for r in routes:
-                    dist_km = r.distance / 1000
-                    date_str = r.created_at.strftime("%Y-%m-%d") if r.created_at else ""
-                    lines.append(
-                        f"  [{r.id}] {r.name} — {dist_km:.1f}km, "
-                        f"爬升{r.elevation_gain:.0f}m, {r.track_points}个轨迹点, "
-                        f"来源:{r.source}, {date_str}"
-                    )
-                return "你的路书：\n" + "\n".join(lines)
-        return _asyncio_list.run(_query())
+            return "你的路书：\n" + "\n".join(lines)
 
     @tool
     def get_route_detail(user_id: int, route_id: int) -> str:
         """读取路书详情。返回距离、爬升、轨迹点数，以及采样后的轨迹点坐标。"""
-        import asyncio as _asyncio_detail
         from app.models import Route as RouteModel
+        from app.db_mysql import sync_session_factory
+        from sqlalchemy import select
         from app.services.route_service import download_gpx_from_oss, parse_gpx
 
-        async def _query():
-            from app.db_mysql import async_session_factory
-            from sqlalchemy import select
-            assert async_session_factory is not None
-            async with async_session_factory() as db:
-                result = await db.execute(
-                    select(RouteModel).where(RouteModel.id == route_id)
-                )
-                route = result.scalar_one_or_none()
-                if route is None:
-                    return "路书不存在。"
-                if route.user_id != user_id:
-                    return "无权访问该路书。"
+        assert sync_session_factory is not None
+        with sync_session_factory() as db:
+            result = db.execute(
+                select(RouteModel).where(RouteModel.id == route_id)
+            )
+            route = result.scalar_one_or_none()
+            if route is None:
+                return "路书不存在。"
+            if route.user_id != user_id:
+                return "无权访问该路书。"
 
-                gpx_data = download_gpx_from_oss(route.gpx_oss_url)
-                _, points, _, _ = parse_gpx(gpx_data)
+            gpx_data = download_gpx_from_oss(route.gpx_oss_url)
+            _, points, _, _ = parse_gpx(gpx_data)
 
-                dist_km = route.distance / 1000
-                total = len(points)
+            dist_km = route.distance / 1000
+            total = len(points)
 
-                # 采样：最多返回 30 个点
-                sample = points
-                if total > 30:
-                    step = total // 30
-                    sample = [points[i] for i in range(0, total, step)][:30]
-                    if points[-1] not in sample:
-                        sample.append(points[-1])
+            sample = points
+            if total > 30:
+                step = total // 30
+                sample = [points[i] for i in range(0, total, step)][:30]
+                if points[-1] not in sample:
+                    sample.append(points[-1])
 
-                coords = ", ".join(
-                    [f"({p['lat']:.4f},{p['lon']:.4f})" for p in sample]
-                )
-                return (
-                    f"路书「{route.name}」详情：\n"
-                    f"  距离: {dist_km:.1f} km\n"
-                    f"  累计爬升: {route.elevation_gain:.0f} m\n"
-                    f"  轨迹点总数: {total}\n"
-                    f"  采样坐标 ({len(sample)}个): {coords}"
-                )
-        return _asyncio_detail.run(_query())
+            coords = ", ".join(
+                [f"({p['lat']:.4f},{p['lon']:.4f})" for p in sample]
+            )
+            return (
+                f"路书「{route.name}」详情：\n"
+                f"  距离: {dist_km:.1f} km\n"
+                f"  累计爬升: {route.elevation_gain:.0f} m\n"
+                f"  轨迹点总数: {total}\n"
+                f"  采样坐标 ({len(sample)}个): {coords}"
+            )
 
     tools = [
         map_directions,
