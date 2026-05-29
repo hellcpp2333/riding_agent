@@ -19,6 +19,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL")
+LLM_MODEL = os.environ["LLM_MODEL"]
 
 BAIDU_MAPS_API_KEY = os.environ["BAIDU_MAPS_API_KEY"]
 # NOTE: API key embedded in URL — avoid logging this URL in errors/traces
@@ -94,7 +95,7 @@ class DebugSummarizationMiddleware(SummarizationMiddleware):
 
 def build_agent(checkpointer):
     llm = ChatOpenAI(
-        model="glm-5v-turbo",
+        model=LLM_MODEL,
         temperature=0,
         api_key=OPENAI_API_KEY,
         base_url=OPENAI_BASE_URL,
@@ -103,7 +104,7 @@ def build_agent(checkpointer):
     )
 
     summary_llm = ChatOpenAI(
-        model="glm-5v-turbo",
+        model=LLM_MODEL,
         temperature=0,
         api_key=OPENAI_API_KEY,
         base_url=OPENAI_BASE_URL,

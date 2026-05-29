@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
-REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BAIDU_MAPS_API_KEY")
+REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "LLM_MODEL", "BAIDU_MAPS_API_KEY", "BAIDU_MAPS_JS_AK")
 
 
 def check_required_env_vars():
@@ -19,7 +19,7 @@ def check_required_env_vars():
 check_required_env_vars()
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.agents import build_agent
@@ -60,4 +60,8 @@ app.include_router(user_router)
 
 @app.get("/")
 async def root():
-    return FileResponse("static/index.html")
+    html_path = "static/index.html"
+    with open(html_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("__BAIDU_MAPS_JS_AK__", os.environ["BAIDU_MAPS_JS_AK"])
+    return HTMLResponse(content=html)
