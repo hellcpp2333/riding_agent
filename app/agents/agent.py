@@ -4,7 +4,7 @@ import os
 from datetime import date
 from typing import Annotated, Literal
 
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
@@ -53,12 +53,48 @@ class AgentState(TypedDict):
 
 def _trim_messages(messages: list, max_count: int = MAX_MESSAGES) -> list:
     """保留尾部 max_count 条消息，同时确保不遗留孤立的 ToolMessage。"""
+    messages = _sanitize_messages(messages)
     if len(messages) <= max_count:
         return list(messages)
     trimmed = list(messages[-max_count:])
     while trimmed and isinstance(trimmed[0], ToolMessage):
         trimmed.pop(0)
     return trimmed
+
+
+def _sanitize_messages(messages: list) -> list:
+    """清理孤立的 tool_calls 和 ToolMessage，确保消息历史合法。"""
+    tool_msg_ids = set()
+    ai_tc_ids = set()
+
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_msg_ids.add(msg.tool_call_id)
+
+    for msg in messages:
+        tc = getattr(msg, "tool_calls", None)
+        if tc:
+            for t in tc:
+                ai_tc_ids.add(t["id"])
+
+    result: list = []
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            if msg.tool_call_id in ai_tc_ids:
+                result.append(msg)
+            continue
+
+        tc = getattr(msg, "tool_calls", None)
+        if tc:
+            valid_tc = [t for t in tc if t["id"] in tool_msg_ids]
+            if not valid_tc:
+                continue
+            if len(valid_tc) != len(tc):
+                msg = msg.model_copy(update={"tool_calls": valid_tc})
+
+        result.append(msg)
+
+    return result
 
 
 def build_agent(checkpointer):
@@ -259,7 +295,7 @@ def build_agent(checkpointer):
 
     def agent_node(state: AgentState, config: RunnableConfig) -> dict:
         messages = [SystemMessage(content=SYSTEM_PROMPT)]
-        messages.extend(_trim_messages(state["messages"]))
+        messages.extend(_trim_messages(_sanitize_messages(state["messages"])))
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
