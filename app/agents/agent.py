@@ -4,14 +4,12 @@ import os
 from datetime import date
 from typing import Annotated, Literal
 
-from langchain.agents.middleware import SummarizationMiddleware
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.runtime import Runtime
 from typing_extensions import TypedDict
 
 from mcp import ClientSession
@@ -26,6 +24,7 @@ BAIDU_MAPS_API_KEY = os.environ["BAIDU_MAPS_API_KEY"]
 BAIDU_MCP_URL = f"https://mcp.map.baidu.com/mcp?ak={BAIDU_MAPS_API_KEY}"
 
 LLM_TIMEOUT_S = 20
+MAX_MESSAGES = 20
 
 SYSTEM_PROMPT = (
     f"今天是 {date.today()}。"
@@ -47,53 +46,19 @@ SYSTEM_PROMPT = (
     "- 回答中涉及距离、时间等数据时，以工具返回的结果为准"
 )
 
-SUMMARY_PROMPT_ZH = """<role>
-骑行对话上下文提取助手
-</role>
-
-<primary_objective>
-从对话历史中提取关键信息，生成简洁摘要。
-</primary_objective>
-
-<instructions>
-提取以下信息：
-
-1. 用户的骑行偏好（避开高速、偏好绿道等）
-2. 对话中已规划的路线（起点、终点、距离、时间）
-3. 用户查询过的地点
-4. 其他需要记住的关键信息
-
-严格按以下格式输出：
-
-## 用户偏好
-## 已规划路线
-## 已查询地点
-## 其他信息
-</instructions>
-
-<messages>
-{messages}
-</messages>"""
-
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
 
-class DebugSummarizationMiddleware(SummarizationMiddleware):
-    def before_model(self, state, runtime):
-        result = super().before_model(state, runtime)
-        if result is not None:
-            for msg in result.get("messages", []):
-                if (
-                    isinstance(msg, HumanMessage)
-                    and msg.additional_kwargs.get("lc_source") == "summarization"
-                ):
-                    print(f"\n{'='*60}")
-                    print("[记忆总结] 触发总结条件：")
-                    print(msg.content)
-                    print(f"{'='*60}\n")
-        return result
+def _trim_messages(messages: list, max_count: int = MAX_MESSAGES) -> list:
+    """保留尾部 max_count 条消息，同时确保不遗留孤立的 ToolMessage。"""
+    if len(messages) <= max_count:
+        return list(messages)
+    trimmed = list(messages[-max_count:])
+    while trimmed and isinstance(trimmed[0], ToolMessage):
+        trimmed.pop(0)
+    return trimmed
 
 
 def build_agent(checkpointer):
@@ -104,22 +69,6 @@ def build_agent(checkpointer):
         base_url=OPENAI_BASE_URL,
         timeout=LLM_TIMEOUT_S,
         extra_body={"thinking": {"type": "disabled"}},
-    )
-
-    summary_llm = ChatOpenAI(
-        model=LLM_MODEL,
-        temperature=0,
-        api_key=OPENAI_API_KEY,
-        base_url=OPENAI_BASE_URL,
-        timeout=LLM_TIMEOUT_S,
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-
-    summarization = DebugSummarizationMiddleware(
-        model=summary_llm,
-        trigger=("messages", 15),
-        keep=("messages", 6),
-        summary_prompt=SUMMARY_PROMPT_ZH,
     )
 
     # Synchronous tool wrappers for MCP (LangGraph nodes are sync)
@@ -308,18 +257,9 @@ def build_agent(checkpointer):
 
     # Graph nodes
 
-    def summarize_node(state: AgentState) -> dict:
-        messages = state["messages"]
-        if messages and not isinstance(messages[-1], HumanMessage):
-            return {}
-        mw_result = summarization.before_model(state, Runtime())
-        if mw_result:
-            return dict(mw_result)
-        return {}
-
     def agent_node(state: AgentState, config: RunnableConfig) -> dict:
         messages = [SystemMessage(content=SYSTEM_PROMPT)]
-        messages.extend(state["messages"])
+        messages.extend(_trim_messages(state["messages"]))
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
@@ -347,16 +287,14 @@ def build_agent(checkpointer):
     # Build graph
 
     builder = StateGraph(AgentState)
-    builder.add_node("summarize", summarize_node)
     builder.add_node("agent", agent_node)
     builder.add_node("tools", tools_node)
 
-    builder.add_edge(START, "summarize")
-    builder.add_edge("summarize", "agent")
+    builder.add_edge(START, "agent")
     builder.add_conditional_edges("agent", route_after_agent, {
         "tools": "tools",
         "__end__": END,
     })
-    builder.add_edge("tools", "summarize")
+    builder.add_edge("tools", "agent")
 
     return builder.compile(checkpointer=checkpointer)
