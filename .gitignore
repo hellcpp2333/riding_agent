@@ -36,6 +36,7 @@ htmlcov/
 
 CLAUDE.md
 .claude/
+.superpowers/
 docs/
 
 需求分析.txt
