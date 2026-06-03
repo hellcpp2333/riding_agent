@@ -1,4 +1,5 @@
 import os
+import glob
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/asserts", StaticFiles(directory="asserts"), name="asserts")
 
 # Include API routes
 app.include_router(api_v1_router)
@@ -70,3 +72,10 @@ async def root():
         html = f.read()
     html = html.replace("__BAIDU_MAPS_JS_AK__", os.environ["BAIDU_MAPS_JS_AK"])
     return HTMLResponse(content=html)
+
+
+@app.get("/api/wallpapers")
+async def list_wallpapers():
+    """Return list of .jpg filenames in the asserts/ directory."""
+    files = [os.path.basename(f) for f in glob.glob("asserts/*.jpg")]
+    return {"images": files}

@@ -11,7 +11,7 @@
 
 <div id="app">
   <!-- Login Page -->
-  <div v-if="!isAuthenticated" class="auth-container">
+  <div v-if="!isAuthenticated" class="auth-container" :style="wallpaperStyle">
     <div class="auth-card" v-if="authMode === 'login'">
       <h2>登录</h2>
       <el-form :model="loginForm" :rules="loginRules" ref="loginFormRef" @submit.prevent="handleLogin">
@@ -201,6 +201,13 @@ const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 const app = createApp({
   setup() {
+    // ==============================
+    // Wallpaper — dynamically fetched, fallback to gradient
+    // ==============================
+    const wallpaperStyle = ref({
+      background: 'var(--gradient-auth)',
+    });
+
     // ==============================
     // Auth State
     // ==============================
@@ -1079,11 +1086,27 @@ const app = createApp({
     // Init
     // ==============================
     onMounted(async () => {
+      // Fetch random wallpaper from server (non-blocking, falls back to gradient)
+      fetch('/api/wallpapers')
+        .then(r => r.json())
+        .then(data => {
+          if (data.images && data.images.length > 0) {
+            const img = data.images[Math.floor(Math.random() * data.images.length)];
+            wallpaperStyle.value = {
+              background: `url(/asserts/${img}) center/cover no-repeat, var(--gradient-auth)`,
+            };
+          }
+        })
+        .catch(() => {}); // Silently fall back to gradient
+
       await checkAuth();
       loadRoutes();
     });
 
     return {
+      // Wallpaper
+      wallpaperStyle,
+
       // Auth
       isAuthenticated,
       authMode,
