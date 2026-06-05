@@ -85,6 +85,34 @@
       </div>
 
       <div id="messages" v-show="currentTab === 'chat'" ref="messagesContainer">
+        <div v-if="messages.length === 0" class="welcome-message">
+          <div class="welcome-icon">🚴</div>
+          <h2>欢迎使用骑行路线助手</h2>
+          <p class="welcome-subtitle">用自然语言规划你的骑行路线，探索城市的每一条街道</p>
+          <div class="welcome-features">
+            <div class="welcome-feature">
+              <span class="welcome-feature-icon">🗺️</span>
+              <div>
+                <strong>路线规划</strong>
+                <p>输入"从朝阳公园骑到颐和园"，AI 自动规划最优骑行路线</p>
+              </div>
+            </div>
+            <div class="welcome-feature">
+              <span class="welcome-feature-icon">🔍</span>
+              <div>
+                <strong>附近搜寻</strong>
+                <p>在地图当前位置搜索周边的便利店、修车店、咖啡店等</p>
+              </div>
+            </div>
+            <div class="welcome-feature">
+              <span class="welcome-feature-icon">📁</span>
+              <div>
+                <strong>路书管理</strong>
+                <p>导入 GPX 路书文件，或导出你规划的路线与他人分享</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div v-for="(msg, idx) in messages" :key="idx" :class="['msg', msg.role]" v-html="msg.content"></div>
       </div>
 

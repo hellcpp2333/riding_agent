@@ -111,6 +111,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
 .tool-indicator{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--color-info-muted);border-radius:var(--radius-sm);font-size:var(--font-xs);color:var(--color-info);animation:pulse 1.5s ease infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 
+/* Welcome Message */
+.welcome-message{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--space-8) var(--space-6);margin:auto 0;animation:msgFadeIn 350ms ease}
+.welcome-icon{font-size:48px;margin-bottom:var(--space-4);line-height:1}
+.welcome-message h2{font-size:var(--font-xl);font-weight:var(--font-weight-semibold);color:var(--color-text);margin-bottom:var(--space-1)}
+.welcome-subtitle{font-size:var(--font-sm);color:var(--color-text-secondary);margin-bottom:var(--space-6)}
+.welcome-features{display:flex;flex-direction:column;gap:var(--space-3);width:100%;max-width:340px;text-align:left}
+.welcome-feature{display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-3) var(--space-4);background:var(--color-surface);border:1px solid var(--color-border-light);border-radius:var(--radius-lg);transition:border-color var(--transition-fast)}
+.welcome-feature:hover{border-color:var(--color-primary)}
+.welcome-feature-icon{font-size:22px;flex-shrink:0;line-height:1.4}
+.welcome-feature strong{display:block;font-size:var(--font-md);color:var(--color-text);margin-bottom:2px}
+.welcome-feature p{font-size:var(--font-xs);color:var(--color-text-secondary);margin:0;line-height:1.5}
+
 /* Actions */
 #actions{padding:8px 16px;display:flex;gap:var(--space-2);border-top:1px solid var(--color-border);background:var(--color-surface);flex-shrink:0}
 #actions button{padding:6px 14px;font-size:var(--font-sm);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text-secondary);cursor:pointer;font-weight:var(--font-weight-medium);transition:border-color var(--transition-base),color var(--transition-base),background-color var(--transition-base)}
