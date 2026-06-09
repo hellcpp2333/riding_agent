@@ -15,6 +15,10 @@ from typing_extensions import TypedDict
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from app.services.elevation_service import (
+    extract_coordinates, sample_points, lookup_elevations, calculate_elevation_stats,
+)
+
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL")
 LLM_MODEL = os.environ["LLM_MODEL"]
@@ -40,7 +44,7 @@ SYSTEM_PROMPT = (
     "工作流程：\n"
     "- 用户提出路线规划时，直接用 map_directions(model='riding') 规划，"
     "起点终点直接传中文地址名，不需要先调用地理编码\n"
-    "- 规划路线后，主动告知距离、预计时间，并询问是否需要搜索沿途设施\n"
+    "- 规划路线后，工具返回中已附带高程数据（累计爬升/下降/最高点/最低点），请主动告知用户距离、爬升、预计时间，并询问是否需要搜索沿途设施\n"
     "- 如果用户要搜索沿途POI，使用 map_search_places 的 location 参数做周边搜索\n"
     "- 用中文回复，语气友好专业\n"
     "- 回答中涉及距离、时间等数据时，以工具返回的结果为准"
@@ -308,8 +312,28 @@ def build_agent(checkpointer):
             for t in tools:
                 if t.name == tool_name:
                     result = t.invoke(tool_args)
+                    result_str = str(result)
+
+                    # 规划路线后自动查询高程
+                    if tool_name == "map_directions":
+                        try:
+                            coords = extract_coordinates(result_str)
+                            if coords:
+                                sampled = sample_points(coords, interval_m=500.0)
+                                elev_points = lookup_elevations(sampled)
+                                stats = calculate_elevation_stats(elev_points)
+                                result_str += (
+                                    f"\n\n[高程数据] "
+                                    f"累计爬升: {stats['elevation_gain']:.0f}m, "
+                                    f"累计下降: {stats['elevation_loss']:.0f}m, "
+                                    f"最高点: {stats['max_elevation']:.0f}m, "
+                                    f"最低点: {stats['min_elevation']:.0f}m"
+                                )
+                        except Exception:
+                            result_str += "\n\n[高程数据] 爬升数据暂不可用"
+
                     tool_messages.append(ToolMessage(
-                        content=str(result), tool_call_id=tc["id"],
+                        content=result_str, tool_call_id=tc["id"],
                     ))
                     break
         return {"messages": tool_messages}
