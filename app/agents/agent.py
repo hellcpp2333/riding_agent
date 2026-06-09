@@ -17,6 +17,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 from app.services.elevation_service import (
     extract_coordinates, sample_points, lookup_elevations, calculate_elevation_stats,
+    convert_points_bd09_to_wgs84,
 )
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -320,7 +321,8 @@ def build_agent(checkpointer):
                             coords = extract_coordinates(result_str)
                             if coords:
                                 sampled = sample_points(coords, interval_m=100.0)
-                                elev_points = lookup_elevations(sampled)
+                                wgs84_points = convert_points_bd09_to_wgs84(sampled)
+                                elev_points = lookup_elevations(wgs84_points)
                                 stats = calculate_elevation_stats(elev_points)
                                 result_str += (
                                     f"\n\n[高程数据] "

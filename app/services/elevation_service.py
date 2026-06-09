@@ -1,10 +1,77 @@
 import json
+import math as _math
 import re as _re
 import urllib.request
 
 from app.services.route_service import haversine_distance
 
 OPEN_ELEVATION_URL = "https://api.open-elevation.com/api/v1/lookup"
+
+# WGS-84 / GCJ-02 转换常量
+_A = 6378245.0
+_EE = 0.00669342162296594323
+
+
+def _transform_lat(lng: float, lat: float) -> float:
+    ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * _math.sqrt(abs(lng))
+    ret += (20.0 * _math.sin(6.0 * lng * _math.pi) + 20.0 * _math.sin(2.0 * lng * _math.pi)) * 2.0 / 3.0
+    ret += (20.0 * _math.sin(lat * _math.pi) + 40.0 * _math.sin(lat / 3.0 * _math.pi)) * 2.0 / 3.0
+    ret += (160.0 * _math.sin(lat / 12.0 * _math.pi) + 320 * _math.sin(lat * _math.pi / 30.0)) * 2.0 / 3.0
+    return ret
+
+
+def _transform_lng(lng: float, lat: float) -> float:
+    ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * _math.sqrt(abs(lng))
+    ret += (20.0 * _math.sin(6.0 * lng * _math.pi) + 20.0 * _math.sin(2.0 * lng * _math.pi)) * 2.0 / 3.0
+    ret += (20.0 * _math.sin(lng * _math.pi) + 40.0 * _math.sin(lng / 3.0 * _math.pi)) * 2.0 / 3.0
+    ret += (150.0 * _math.sin(lng / 12.0 * _math.pi) + 300.0 * _math.sin(lng / 30.0 * _math.pi)) * 2.0 / 3.0
+    return ret
+
+
+def _wgs84_to_gcj02(lng: float, lat: float) -> tuple[float, float]:
+    d_lat = _transform_lat(lng - 105.0, lat - 35.0)
+    d_lng = _transform_lng(lng - 105.0, lat - 35.0)
+    rad_lat = lat / 180.0 * _math.pi
+    magic = 1 - _EE * _math.sin(rad_lat) ** 2
+    sqrt_magic = _math.sqrt(magic)
+    d_lat = (d_lat * 180.0) / ((_A * (1 - _EE)) / (magic * sqrt_magic) * _math.pi)
+    d_lng = (d_lng * 180.0) / (_A / sqrt_magic * _math.cos(rad_lat) * _math.pi)
+    return lng + d_lng, lat + d_lat
+
+
+def _gcj02_to_wgs84(lng: float, lat: float) -> tuple[float, float]:
+    wgs_lng, wgs_lat = lng, lat
+    for _ in range(10):
+        tmp_lng, tmp_lat = _wgs84_to_gcj02(wgs_lng, wgs_lat)
+        d_lng = tmp_lng - lng
+        d_lat = tmp_lat - lat
+        if abs(d_lng) < 1e-7 and abs(d_lat) < 1e-7:
+            break
+        wgs_lng -= d_lng
+        wgs_lat -= d_lat
+    return wgs_lng, wgs_lat
+
+
+def bd09_to_wgs84(lng: float, lat: float) -> tuple[float, float]:
+    """百度坐标系 (BD-09) → WGS-84 坐标转换。"""
+    # BD-09 → GCJ-02
+    x = lng - 0.0065
+    y = lat - 0.006
+    z = _math.sqrt(x * x + y * y) - 0.00002 * _math.sin(y * _math.pi * 3000.0 / 180.0)
+    theta = _math.atan2(y, x) - 0.000003 * _math.cos(x * _math.pi * 3000.0 / 180.0)
+    gcj_lng = z * _math.cos(theta)
+    gcj_lat = z * _math.sin(theta)
+    # GCJ-02 → WGS-84
+    return _gcj02_to_wgs84(gcj_lng, gcj_lat)
+
+
+def convert_points_bd09_to_wgs84(points: list[dict]) -> list[dict]:
+    """将坐标点列表从 BD-09 转换为 WGS-84。"""
+    result = []
+    for p in points:
+        wgs_lng, wgs_lat = bd09_to_wgs84(p["lon"], p["lat"])
+        result.append({"lat": wgs_lat, "lon": wgs_lng})
+    return result
 
 
 def lookup_elevations(points: list[dict]) -> list[dict]:

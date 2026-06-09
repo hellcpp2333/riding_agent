@@ -7,6 +7,8 @@ from app.services.elevation_service import (
     calculate_elevation_stats,
     lookup_elevations,
     extract_coordinates,
+    bd09_to_wgs84,
+    convert_points_bd09_to_wgs84,
 )
 
 
@@ -111,6 +113,35 @@ def test_calculate_elevation_stats_filters_noise():
     assert stats["elevation_gain"] < 200
     # 真实爬升应被计入
     assert stats["elevation_gain"] > 50
+
+
+def test_bd09_to_wgs84_roundtrip():
+    """BD-09 → WGS-84 应在 100-500m 偏移范围内"""
+    bd_lng, bd_lat = 116.404, 39.915  # 天安门附近
+    wgs_lng, wgs_lat = bd09_to_wgs84(bd_lng, bd_lat)
+    # 偏移应在 100-500m 量级
+    d = haversine_distance(bd_lat, bd_lng, wgs_lat, wgs_lng)
+    assert 50 < d < 2000  # BD-09→GCJ-02 + GCJ-02→WGS-84 叠加最多 ~1500m
+
+
+def test_bd09_to_wgs84_deterministic():
+    """相同输入应返回相同结果"""
+    r1 = bd09_to_wgs84(116.404, 39.915)
+    r2 = bd09_to_wgs84(116.404, 39.915)
+    assert r1 == r2
+
+
+def test_convert_points_bd09_to_wgs84():
+    points = [
+        {"lat": 39.915, "lon": 116.404},
+        {"lat": 39.925, "lon": 116.414},
+    ]
+    result = convert_points_bd09_to_wgs84(points)
+    assert len(result) == 2
+    assert "lat" in result[0]
+    assert "lon" in result[0]
+    # 转换后坐标不应等于原值
+    assert result[0]["lat"] != 39.915
 
 
 @patch("app.services.elevation_service.urllib.request.urlopen")
