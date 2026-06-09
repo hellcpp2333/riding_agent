@@ -319,7 +319,7 @@ def build_agent(checkpointer):
                         try:
                             coords = extract_coordinates(result_str)
                             if coords:
-                                sampled = sample_points(coords, interval_m=500.0)
+                                sampled = sample_points(coords, interval_m=100.0)
                                 elev_points = lookup_elevations(sampled)
                                 stats = calculate_elevation_stats(elev_points)
                                 result_str += (

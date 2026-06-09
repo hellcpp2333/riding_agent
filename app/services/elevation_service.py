@@ -70,15 +70,43 @@ def calculate_elevation_stats(points: list[dict]) -> dict:
 
 def extract_coordinates(text: str) -> list[dict]:
     """从 map_directions 返回的文本中提取坐标列表。
-    支持两种格式：
-    1. JSON 中的 path 字段（Baidu MCP 常见格式）: "lng,lat;lng,lat;..."
-    2. 文本中的 lat/lon 数字对
+
+    Baidu MCP 返回的路线数据中，坐标可能以多种格式出现：
+    1. 分号分隔的坐标串: "lng,lat;lng,lat;..."
+    2. JSON path/polyline 字段
+    3. 文本中的 (lat, lng) 或 (lng, lat) 数字对
     """
     points: list[dict] = []
+    seen: set[tuple[float, float]] = set()
 
-    # 尝试从 JSON 中提取 path 字符串
-    paths = _re.findall(r'"path"\s*:\s*"([^"]+)"', text)
-    if paths:
+    def _add(a: float, b: float):
+        p = _parse_coord_pair(a, b)
+        if p is None:
+            return
+        key = (round(p["lat"], 6), round(p["lon"], 6))
+        if key not in seen:
+            seen.add(key)
+            points.append(p)
+
+    # 1. 找分号分隔的坐标串（Baidu 路线数据最常见格式）
+    coord_blocks = _re.findall(
+        r'((?:[\d.]+,[\d.]+;)+[\d.]+,[\d.]+)', text
+    )
+    for block in coord_blocks:
+        for pair in block.split(";"):
+            pair = pair.strip()
+            if not pair:
+                continue
+            parts = pair.split(",")
+            if len(parts) == 2:
+                try:
+                    _add(float(parts[0].strip()), float(parts[1].strip()))
+                except ValueError:
+                    continue
+
+    # 2. JSON path/polyline 字段（含单个坐标对）
+    for key in ("path", "polyline", "points"):
+        paths = _re.findall(rf'"{key}"\s*:\s*"([^"]+)"', text)
         for path in paths:
             for pair in path.split(";"):
                 pair = pair.strip()
@@ -87,21 +115,42 @@ def extract_coordinates(text: str) -> list[dict]:
                 parts = pair.split(",")
                 if len(parts) == 2:
                     try:
-                        lon = float(parts[0].strip())
-                        lat = float(parts[1].strip())
-                        points.append({"lat": lat, "lon": lon})
+                        _add(float(parts[0].strip()), float(parts[1].strip()))
                     except ValueError:
                         continue
 
-    # 如果没找到 path，尝试匹配文本中的 lat/lon 数字对
+    # 3. 兜底：匹配文本中的 (number, number) 对
     if not points:
         pairs = _re.findall(
-            r'\(?(\d{1,2}\.\d{4,}),\s*(\d{2,3}\.\d{4,})\)?', text
+            r'\(?(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)\)?', text
         )
-        for lat_str, lon_str in pairs:
-            lat = float(lat_str)
-            lon = float(lon_str)
-            if -90 <= lat <= 90 and -180 <= lon <= 180:
-                points.append({"lat": lat, "lon": lon})
+        for a_str, b_str in pairs:
+            _add(float(a_str), float(b_str))
 
     return points
+
+
+def _parse_coord_pair(a: float, b: float) -> dict | None:
+    """判断 (a, b) 是 (lat, lon) 还是 (lon, lat)，返回 {"lat": ..., "lon": ...}。
+
+    Baidu 坐标系下中国范围: lat 18~54, lon 73~135。
+    a 和 b 谁在这个范围里决定谁是 lat/lon。
+    """
+    a_is_lat = 18 <= a <= 54
+    b_is_lat = 18 <= b <= 54
+    a_is_lon = 73 <= a <= 135
+    b_is_lon = 73 <= b <= 135
+
+    if a_is_lat and b_is_lon:
+        return {"lat": a, "lon": b}
+    elif b_is_lat and a_is_lon:
+        return {"lat": b, "lon": a}
+    # 如果都在合理范围，默认 a=lat, b=lon
+    elif a_is_lat and b_is_lat:
+        return {"lat": a, "lon": b}
+    # 如果都不在合理范围，仍尝试返回
+    elif -90 <= a <= 90 and -180 <= b <= 180:
+        return {"lat": a, "lon": b}
+    elif -90 <= b <= 90 and -180 <= a <= 180:
+        return {"lat": b, "lon": a}
+    return None
