@@ -1,4 +1,5 @@
 import json
+import re as _re
 import urllib.request
 
 from app.services.route_service import haversine_distance
@@ -65,3 +66,42 @@ def calculate_elevation_stats(points: list[dict]) -> dict:
         "min_elevation": min(elevations) if elevations else 0,
         "point_count": len(points),
     }
+
+
+def extract_coordinates(text: str) -> list[dict]:
+    """从 map_directions 返回的文本中提取坐标列表。
+    支持两种格式：
+    1. JSON 中的 path 字段（Baidu MCP 常见格式）: "lng,lat;lng,lat;..."
+    2. 文本中的 lat/lon 数字对
+    """
+    points: list[dict] = []
+
+    # 尝试从 JSON 中提取 path 字符串
+    paths = _re.findall(r'"path"\s*:\s*"([^"]+)"', text)
+    if paths:
+        for path in paths:
+            for pair in path.split(";"):
+                pair = pair.strip()
+                if not pair:
+                    continue
+                parts = pair.split(",")
+                if len(parts) == 2:
+                    try:
+                        lon = float(parts[0].strip())
+                        lat = float(parts[1].strip())
+                        points.append({"lat": lat, "lon": lon})
+                    except ValueError:
+                        continue
+
+    # 如果没找到 path，尝试匹配文本中的 lat/lon 数字对
+    if not points:
+        pairs = _re.findall(
+            r'\(?(\d{1,2}\.\d{4,}),\s*(\d{2,3}\.\d{4,})\)?', text
+        )
+        for lat_str, lon_str in pairs:
+            lat = float(lat_str)
+            lon = float(lon_str)
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                points.append({"lat": lat, "lon": lon})
+
+    return points

@@ -5,6 +5,7 @@ from app.services.elevation_service import (
     sample_points,
     calculate_elevation_stats,
     lookup_elevations,
+    extract_coordinates,
 )
 
 
@@ -90,3 +91,33 @@ def test_lookup_elevations(mock_urlopen):
     assert len(result) == 2
     assert result[0] == {"lat": 23.0, "lon": 113.0, "ele": 100}
     assert result[1] == {"lat": 23.001, "lon": 113.001, "ele": 120}
+
+
+def test_extract_coordinates_from_path():
+    text = '{"routes":[{"steps":[{"path":"116.4,39.9;116.41,39.91;116.42,39.92"}]}]}'
+    points = extract_coordinates(text)
+    assert len(points) == 3
+    assert points[0] == {"lat": 39.9, "lon": 116.4}
+
+
+def test_extract_coordinates_from_bracketed_pairs():
+    text = "路线经过 (39.9042, 116.4074) 和 (39.9142, 116.4174)"
+    points = extract_coordinates(text)
+    assert len(points) == 2
+    assert points[0] == {"lat": 39.9042, "lon": 116.4074}
+
+
+def test_extract_coordinates_no_coords():
+    points = extract_coordinates("没有坐标的文本")
+    assert points == []
+
+
+def test_extract_coordinates_multiple_paths():
+    text = '''
+    {"steps": [
+      {"path": "113.0,23.0;113.001,23.001"},
+      {"path": "113.002,23.002"}
+    ]}
+    '''
+    points = extract_coordinates(text)
+    assert len(points) == 3
