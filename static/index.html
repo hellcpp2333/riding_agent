@@ -892,6 +892,7 @@ const app = createApp({
                 } else if (currentEvent === 'route') {
                   assistantMsg.content = formatText(fullText) + buildRouteCard(data);
                   drawRoute(data);
+                  lastChatRouteData.value = data;
                 } else if (currentEvent === 'done') {
                   if (data.thread_id) {
                     threadId.value = data.thread_id;
