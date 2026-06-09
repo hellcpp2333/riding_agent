@@ -57,7 +57,7 @@ def parse_gpx(file_data: bytes) -> tuple[str, list[dict], float, float]:
         )
         distance += d
         ele_diff = points[i]["ele"] - points[i - 1]["ele"]
-        if ele_diff > 0:
+        if ele_diff > 3.0:
             elevation_gain += ele_diff
 
     return (name, points, distance, elevation_gain)

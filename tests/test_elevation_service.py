@@ -72,6 +72,20 @@ def test_calculate_elevation_stats_empty():
     assert stats["max_elevation"] == 0
 
 
+def test_calculate_elevation_stats_filters_noise():
+    """低于阈值的微小抖动应被过滤"""
+    points = [
+        {"lat": 23.0, "lon": 113.0, "ele": 100},
+        {"lat": 23.001, "lon": 113.001, "ele": 102},   # +2, 低于 3m 阈值
+        {"lat": 23.002, "lon": 113.002, "ele": 99},    # -3, 不到 -3 阈值（刚好 3）
+        {"lat": 23.003, "lon": 113.003, "ele": 115},   # +16, 计入爬升
+        {"lat": 23.004, "lon": 113.004, "ele": 100},   # -15, 计入下降
+    ]
+    stats = calculate_elevation_stats(points)
+    assert stats["elevation_gain"] == 16.0
+    assert stats["elevation_loss"] == 15.0
+
+
 @patch("app.services.elevation_service.urllib.request.urlopen")
 def test_lookup_elevations(mock_urlopen):
     mock_resp = MagicMock()

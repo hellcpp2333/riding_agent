@@ -48,15 +48,19 @@ def sample_points(points: list[dict], interval_m: float = 500.0) -> list[dict]:
     return sampled
 
 
-def calculate_elevation_stats(points: list[dict]) -> dict:
-    """计算爬升统计。points 需含 ele 字段。"""
+def calculate_elevation_stats(points: list[dict], min_gain_threshold: float = 3.0) -> dict:
+    """计算爬升统计。points 需含 ele 字段。
+
+    min_gain_threshold: 最小爬升阈值（米），低于此值的正高差视为噪声，不计入爬升。
+    GPS 和 DEM 高程数据都有固有噪声，设阈值可避免微小抖动被累积成虚假爬升。
+    """
     gain = 0.0
     loss = 0.0
     for i in range(1, len(points)):
         diff = points[i]["ele"] - points[i - 1]["ele"]
-        if diff > 0:
+        if diff > min_gain_threshold:
             gain += diff
-        else:
+        elif diff < -min_gain_threshold:
             loss += abs(diff)
     elevations = [p["ele"] for p in points]
     return {
