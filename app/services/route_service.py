@@ -50,14 +50,26 @@ def parse_gpx(file_data: bytes) -> tuple[str, list[dict], float, float]:
 
     distance = 0.0
     elevation_gain = 0.0
-    for i in range(1, len(points)):
+
+    # 移动平均平滑高程，消除 GPS 噪声突跳
+    smoothed = points
+    if len(points) >= 5:
+        half = 2
+        smoothed = []
+        for i, p in enumerate(points):
+            start = max(0, i - half)
+            end = min(len(points), i + half + 1)
+            avg = sum(points[j]["ele"] for j in range(start, end)) / (end - start)
+            smoothed.append({**p, "ele": avg})
+
+    for i in range(1, len(smoothed)):
         d = haversine_distance(
-            points[i - 1]["lat"], points[i - 1]["lon"],
-            points[i]["lat"], points[i]["lon"],
+            smoothed[i - 1]["lat"], smoothed[i - 1]["lon"],
+            smoothed[i]["lat"], smoothed[i]["lon"],
         )
         distance += d
-        ele_diff = points[i]["ele"] - points[i - 1]["ele"]
-        if ele_diff > 3.0:
+        ele_diff = smoothed[i]["ele"] - smoothed[i - 1]["ele"]
+        if ele_diff > 5.0:
             elevation_gain += ele_diff
 
     return (name, points, distance, elevation_gain)

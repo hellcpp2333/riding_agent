@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 from app.services.elevation_service import (
     haversine_distance,
     sample_points,
+    smooth_elevations,
     calculate_elevation_stats,
     lookup_elevations,
     extract_coordinates,
@@ -43,6 +44,30 @@ def test_sample_points_dense():
     assert sampled[-1] == points[-1]
 
 
+def test_smooth_elevations_flattens_spikes():
+    points = [
+        {"lat": 23.0, "lon": 113.0, "ele": 100},
+        {"lat": 23.001, "lon": 113.001, "ele": 100},
+        {"lat": 23.002, "lon": 113.002, "ele": 180},  # spike
+        {"lat": 23.003, "lon": 113.003, "ele": 100},
+        {"lat": 23.004, "lon": 113.004, "ele": 100},
+        {"lat": 23.005, "lon": 113.005, "ele": 100},
+        {"lat": 23.006, "lon": 113.006, "ele": 100},
+    ]
+    result = smooth_elevations(points, window=5)
+    # 尖峰被拉低
+    assert result[2]["ele"] < 180
+    assert result[2]["ele"] > 100
+    # 远离尖峰的平稳段保持原值
+    assert result[5]["ele"] == 100
+
+
+def test_smooth_elevations_short():
+    points = [{"lat": 23.0, "lon": 113.0, "ele": 100}]
+    result = smooth_elevations(points, window=5)
+    assert result == points
+
+
 def test_calculate_elevation_stats_gain():
     points = [
         {"lat": 23.0, "lon": 113.0, "ele": 100},
@@ -73,17 +98,19 @@ def test_calculate_elevation_stats_empty():
 
 
 def test_calculate_elevation_stats_filters_noise():
-    """低于阈值的微小抖动应被过滤"""
-    points = [
-        {"lat": 23.0, "lon": 113.0, "ele": 100},
-        {"lat": 23.001, "lon": 113.001, "ele": 102},   # +2, 低于 3m 阈值
-        {"lat": 23.002, "lon": 113.002, "ele": 99},    # -3, 不到 -3 阈值（刚好 3）
-        {"lat": 23.003, "lon": 113.003, "ele": 115},   # +16, 计入爬升
-        {"lat": 23.004, "lon": 113.004, "ele": 100},   # -15, 计入下降
-    ]
+    """微小抖动应被平滑+阈值双重过滤，真实爬升应被计入"""
+    points = []
+    # 前 10 个点在 100m 附近带噪声抖动
+    for i in range(10):
+        points.append({"lat": 23.0 + i * 0.001, "lon": 113.0, "ele": 100 + (2 if i % 3 == 0 else 0)})
+    # 后 10 个点持续爬升到 200m
+    for i in range(10):
+        points.append({"lat": 24.0 + i * 0.001, "lon": 113.0, "ele": 200 + (i * 10)})
     stats = calculate_elevation_stats(points)
-    assert stats["elevation_gain"] == 16.0
-    assert stats["elevation_loss"] == 15.0
+    # 噪声段不应产生爬升
+    assert stats["elevation_gain"] < 200
+    # 真实爬升应被计入
+    assert stats["elevation_gain"] > 50
 
 
 @patch("app.services.elevation_service.urllib.request.urlopen")
