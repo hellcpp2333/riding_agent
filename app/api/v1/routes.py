@@ -75,7 +75,11 @@ async def chat(
                     if hasattr(msg, "type") and msg.type == "tool":
                         content = msg.content if hasattr(msg, "content") else str(msg)
                         try:
-                            data = json.loads(content) if isinstance(content, str) else content
+                            if isinstance(content, str):
+                                json_str = content.split('\n\n[高程数据]')[0]
+                                data = json.loads(json_str)
+                            else:
+                                data = content
                             yield {
                                 "event": "route",
                                 "data": json.dumps(data, ensure_ascii=False),
@@ -133,7 +137,11 @@ async def plan_route(
                     elif hasattr(msg, "type") and msg.type == "tool":
                         content = msg.content if hasattr(msg, "content") else str(msg)
                         try:
-                            data = json.loads(content) if isinstance(content, str) else content
+                            if isinstance(content, str):
+                                json_str = content.split('\n\n[高程数据]')[0]
+                                data = json.loads(json_str)
+                            else:
+                                data = content
                             yield {"event": "route", "data": json.dumps(data, ensure_ascii=False)}
                         except (json.JSONDecodeError, TypeError):
                             pass
