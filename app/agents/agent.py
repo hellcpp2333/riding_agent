@@ -18,7 +18,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from app.services.elevation_service import (
     extract_coordinates, sample_points, lookup_elevations_local,
     calculate_elevation_stats, convert_points_bd09_to_wgs84,
-    calculate_cumulative_distances, detect_climbs,
+    calculate_cumulative_distances, detect_climbs, savitzky_golay_smooth,
 )
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -321,10 +321,11 @@ def build_agent(checkpointer):
                         try:
                             coords = extract_coordinates(result_str)
                             if coords:
-                                sampled = sample_points(coords)  # uses default 15m
+                                sampled = sample_points(coords)  # uses default 30m
                                 wgs84_points = convert_points_bd09_to_wgs84(sampled)
                                 elev_points = lookup_elevations_local(wgs84_points)
                                 elev_with_dist = calculate_cumulative_distances(elev_points)
+                                elev_smoothed = savitzky_golay_smooth(elev_with_dist)
                                 stats = calculate_elevation_stats(elev_with_dist)
                                 climbs = detect_climbs(elev_with_dist)
                                 result_str += (
@@ -336,7 +337,7 @@ def build_agent(checkpointer):
                                 )
                                 elev_json = json.dumps(
                                     {
-                                        "points": elev_with_dist,
+                                        "points": elev_smoothed,
                                         "stats": {
                                             "gain": round(stats["elevation_gain"]),
                                             "loss": round(stats["elevation_loss"]),

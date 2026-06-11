@@ -258,7 +258,7 @@ def enrich_route_with_elevation(track_points: list[dict], *, is_wgs84: bool = Tr
             wgs84_points = convert_points_bd09_to_wgs84(sampled)
             elev = lookup_elevations_local(wgs84_points)
             elev_with_dist = calculate_cumulative_distances(elev)
-        points = douglas_peucker_smooth(elev_with_dist)
+        points = savitzky_golay_smooth(elev_with_dist)
 
     stats = calculate_elevation_stats(points)
     climbs = detect_climbs(points)
@@ -275,7 +275,7 @@ def enrich_route_with_elevation(track_points: list[dict], *, is_wgs84: bool = Tr
     }
 
 
-def sample_points(points: list[dict], interval_m: float = 15.0) -> list[dict]:
+def sample_points(points: list[dict], interval_m: float = 30.0) -> list[dict]:
     """等距采样，减少 API 请求量。保留首尾点。"""
     if len(points) <= 2:
         return list(points)
@@ -309,7 +309,7 @@ def calculate_cumulative_distances(points: list[dict]) -> list[dict]:
     return result
 
 
-def douglas_peucker_smooth(points: list[dict], epsilon: float = 3.0) -> list[dict]:
+def douglas_peucker_smooth(points: list[dict], epsilon: float = 5.0) -> list[dict]:
     """Douglas-Peucker 平滑：保留高程变化 >= epsilon 米的关键拐点，
     删除平缓段的冗余点。比移动平均更好地保留山顶、谷底等真实地形特征。
 
@@ -357,6 +357,33 @@ def douglas_peucker_smooth(points: list[dict], epsilon: float = 3.0) -> list[dic
     return [points[i] for i in indices]
 
 
+# Savitzky-Golay 预计算系数：(系数列表, 归一化分母)
+_SG_COEFFS = {
+    (5, 2): ([-3, 12, 17, 12, -3], 35),
+    (7, 2): ([-2, 3, 6, 7, 6, 3, -2], 21),
+}
+
+
+def savitzky_golay_smooth(points: list[dict], window: int = 5, order: int = 2) -> list[dict]:
+    """Savitzky-Golay 平滑滤波，消除 DEM 高频噪声。points 需近似等间距。"""
+    if len(points) < window:
+        return list(points)
+    half = window // 2
+    coeffs, norm = _SG_COEFFS[(window, order)]
+    n = len(points)
+    result = []
+    for i in range(n):
+        if i < half or i >= n - half:
+            result.append({**points[i]})
+        else:
+            ele = sum(
+                points[i + j - half]["ele"] * coeffs[j]
+                for j in range(window)
+            ) / norm
+            result.append({**points[i], "ele": round(ele, 1)})
+    return result
+
+
 def smooth_elevations(points: list[dict], window: int = 3) -> list[dict]:
     """移动平均平滑高程，消除 GPS/DEM 噪声突跳。窗口越大越平滑。"""
     if len(points) < window:
@@ -371,14 +398,14 @@ def smooth_elevations(points: list[dict], window: int = 3) -> list[dict]:
     return result
 
 
-def calculate_elevation_stats(points: list[dict], min_gain_threshold: float = 1.0) -> dict:
+def calculate_elevation_stats(points: list[dict], min_gain_threshold: float = 3.0) -> dict:
     """计算爬升统计。Douglas-Peucker 平滑去噪后累加正负高差。points 需含 ele 字段。
     若 points 无 dist 字段，自动使用累积 Haversine 距离计算。
     """
     # 防御性：确保有 dist 字段
     if points and "dist" not in points[0]:
         points = calculate_cumulative_distances(points)
-    smoothed = douglas_peucker_smooth(points)
+    smoothed = savitzky_golay_smooth(points)
     gain = 0.0
     loss = 0.0
     for i in range(1, len(smoothed)):
