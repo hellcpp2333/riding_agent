@@ -53,6 +53,7 @@ class RouteDetailResponse(BaseModel):
     source: str
     created_at: datetime
     track_data: list[TrackPoint]
+    elevation: dict | None = None
 
     class Config:
         from_attributes = True

@@ -139,12 +139,71 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
 #btn-send:disabled{opacity:0.4;cursor:not-allowed}
 
 /* Map & Routes */
-#map-container{flex:1;position:relative}
+.map-right{flex:1;height:100%;display:grid;grid-template-rows:1fr;transition:grid-template-rows 0.3s ease}
+.map-right.has-elevation{grid-template-rows:3fr 1fr}
+#map-container{height:100%;position:relative}
 #map{width:100%;height:100%}
+.btn-climb-float{position:absolute;top:10px;right:60px;z-index:10;padding:6px 14px;background:#c4734f;color:#fff;border:none;border-radius:var(--radius-md);cursor:pointer;font-size:var(--font-sm);font-weight:var(--font-weight-medium);box-shadow:var(--shadow-md);transition:background-color 0.15s ease}
+.btn-climb-float:hover{background:#a85d3e}
 .map-route-info{position:absolute;bottom:16px;left:16px;right:16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--space-3) var(--space-4);box-shadow:var(--shadow-md);display:flex;align-items:center;gap:var(--space-3);font-size:var(--font-sm);z-index:10;animation:msgFadeIn 250ms ease}
 .map-route-info .info-stat{display:flex;flex-direction:column;gap:2px}
 .map-route-info .info-value{font-weight:var(--font-weight-semibold);color:var(--color-text)}
 .map-route-info .info-label{font-size:var(--font-xs);color:var(--color-text-tertiary)}
+
+/* Elevation Panel (below map) */
+#elevation-panel{display:flex;flex-direction:column;background:var(--color-surface);border-top:1px solid var(--color-border);min-height:0;overflow-y:auto}
+.elevation-stats{display:flex;gap:var(--space-3);padding:8px var(--space-4);align-items:center;justify-content:center;flex-shrink:0;border-bottom:1px solid var(--color-border-light)}
+.stat-card{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:70px;padding:4px 10px;background:var(--color-bg);border-radius:var(--radius-md);box-shadow:var(--shadow-sm);border:1px solid var(--color-border-light)}
+.stat-value{font-size:var(--font-lg);font-weight:var(--font-weight-bold);color:var(--color-text);line-height:1.2}
+.stat-label{font-size:10px;color:var(--color-text-tertiary);font-weight:var(--font-weight-medium)}
+#elevation-canvas{width:100%;height:200px;flex-shrink:0}
+
+/* Climb List (in elevation panel) */
+.climb-list{padding:var(--space-2) var(--space-4);flex-shrink:0}
+.climb-list-title{font-size:var(--font-sm);font-weight:var(--font-weight-semibold);color:var(--color-text);margin-bottom:4px}
+.climb-list-item{display:flex;align-items:center;gap:var(--space-2);padding:5px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:var(--font-sm);transition:background-color 0.15s ease}
+.climb-list-item:hover{background:var(--color-bg)}
+
+/* Climb Sidebar */
+#climb-sidebar-overlay{position:fixed;inset:0;background:rgba(44,36,22,0.25);z-index:900;opacity:0;pointer-events:none;transition:opacity 0.3s ease}
+#climb-sidebar-overlay.show{opacity:1;pointer-events:auto}
+#climb-sidebar{position:fixed;top:0;right:0;width:380px;max-width:90vw;height:100vh;background:var(--color-surface);border-left:1px solid var(--color-border);box-shadow:var(--shadow-lg);z-index:901;display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.3s ease}
+#climb-sidebar.show{transform:translateX(0)}
+.climb-sidebar-header{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-border);flex-shrink:0}
+.climb-nav-btn{width:28px;height:28px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-bg);color:var(--color-text);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s ease,color 0.15s ease}
+.climb-nav-btn:hover:not(:disabled){border-color:var(--color-primary);color:var(--color-primary)}
+.climb-nav-btn:disabled{opacity:0.3;cursor:not-allowed}
+.climb-counter{flex:1;text-align:center;font-size:var(--font-md);font-weight:var(--font-weight-semibold);color:var(--color-text)}
+.climb-close-btn{width:28px;height:28px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--color-text-secondary);cursor:pointer;font-size:18px;line-height:1;transition:color 0.15s ease}
+.climb-close-btn:hover{color:var(--color-error)}
+.climb-sidebar-body{flex:1;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
+.climb-sidebar-body.climb-empty{justify-content:center;align-items:center;color:var(--color-text-tertiary);font-size:var(--font-sm)}
+.climb-details{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3);background:var(--color-bg);border-radius:var(--radius-md);border:1px solid var(--color-border-light)}
+.climb-detail-row{display:flex;justify-content:space-between;align-items:center;font-size:var(--font-md)}
+.climb-detail-label{color:var(--color-text-secondary)}
+.climb-detail-value{font-weight:var(--font-weight-semibold);color:var(--color-text)}
+.climb-difficulty{font-weight:var(--font-weight-semibold);padding:2px 10px;border-radius:var(--radius-full);font-size:var(--font-sm)}
+.difficulty-1{background:#e8f5e9;color:#2e7d32}
+.difficulty-2{background:#fff8e1;color:#f9a825}
+.difficulty-3{background:#fff3e0;color:#ef6c00}
+.difficulty-4{background:#fce4ec;color:#c62828}
+.difficulty-5{background:#fce4ec;color:#880e0e}
+.climb-chart-container{height:250px;flex-shrink:0}
+#climb-canvas{width:100%;height:250px}
+/* Garmin-style gradient legend — spans chart content area */
+.climb-gradient-legend{display:flex;align-items:center;justify-content:space-between;padding:4px 52px 4px 52px;font-size:11px;color:var(--color-text-secondary)}
+.climb-gradient-legend .legend-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.climb-gradient-legend .legend-dot.l1{background:#d8f5a2}
+.climb-gradient-legend .legend-dot.l2{background:#c0ca33}
+.climb-gradient-legend .legend-dot.l3{background:#f98925}
+.climb-gradient-legend .legend-dot.l4{background:#f5bf2a}
+.climb-gradient-legend .legend-dot.l5{background:#ee3e3e}
+/* Markdown table in chat */
+table.md-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px;background:var(--color-bg);border-radius:6px;overflow:hidden}
+table.md-table th{background:var(--color-primary);color:#fff;padding:6px 12px;text-align:left;font-weight:600}
+table.md-table td{padding:5px 12px;border-bottom:1px solid var(--color-border-light)}
+table.md-table tr:nth-child(even) td{background:rgba(0,0,0,0.02)}
+table.md-table tr:hover td{background:rgba(0,0,0,0.04)}
 #routes-view{flex:1;overflow-y:auto;padding:var(--space-3)}
 .routes-toolbar{margin-bottom:var(--space-3)}
 .btn-import{padding:8px 18px;background:var(--color-primary);color:#fff;border:none;border-radius:var(--radius-md);cursor:pointer;font-size:var(--font-md);font-weight:var(--font-weight-medium);display:inline-flex;align-items:center;gap:6px;transition:background-color var(--transition-base),transform var(--transition-base),box-shadow var(--transition-base)}

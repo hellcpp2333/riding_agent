@@ -22,6 +22,7 @@ from app.services.route_service import (
     parse_gpx,
     upload_gpx_to_oss,
 )
+from app.services.elevation_service import enrich_route_with_elevation
 
 def _make_content_disposition(name: str) -> str:
     """生成安全的 Content-Disposition header，处理非 ASCII 字符"""
@@ -73,6 +74,18 @@ async def get_route(route_id: int, user: User = Depends(get_current_user)):
         gpx_data = download_gpx_from_oss(route.gpx_oss_url)
         _, track_points, _, _ = parse_gpx(gpx_data)
 
+        # 降采样至最多 500 点（地图渲染超过此数无意义，且减少传输量）
+        if len(track_points) > 500:
+            step = len(track_points) // 500
+            track_points = [track_points[i] for i in range(0, len(track_points), step)]
+            track_points = track_points[:500]
+
+        # 富化高程数据（含 elevation profile + climbs）
+        try:
+            elevation_data = enrich_route_with_elevation(track_points)
+        except Exception:
+            elevation_data = None
+
         return RouteDetailResponse(
             id=route.id,
             name=route.name,
@@ -83,6 +96,7 @@ async def get_route(route_id: int, user: User = Depends(get_current_user)):
             source=route.source,
             created_at=route.created_at.isoformat() if route.created_at else "",
             track_data=[TrackPoint(lat=p["lat"], lon=p["lon"], ele=p.get("ele")) for p in track_points],
+            elevation=elevation_data,
         )
 
 

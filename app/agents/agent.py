@@ -16,8 +16,9 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from app.services.elevation_service import (
-    extract_coordinates, sample_points, lookup_elevations, calculate_elevation_stats,
-    convert_points_bd09_to_wgs84,
+    extract_coordinates, sample_points, lookup_elevations_local,
+    calculate_elevation_stats, convert_points_bd09_to_wgs84,
+    calculate_cumulative_distances, detect_climbs,
 )
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -320,10 +321,12 @@ def build_agent(checkpointer):
                         try:
                             coords = extract_coordinates(result_str)
                             if coords:
-                                sampled = sample_points(coords, interval_m=100.0)
+                                sampled = sample_points(coords)  # uses default 15m
                                 wgs84_points = convert_points_bd09_to_wgs84(sampled)
-                                elev_points = lookup_elevations(wgs84_points)
-                                stats = calculate_elevation_stats(elev_points)
+                                elev_points = lookup_elevations_local(wgs84_points)
+                                elev_with_dist = calculate_cumulative_distances(elev_points)
+                                stats = calculate_elevation_stats(elev_with_dist)
+                                climbs = detect_climbs(elev_with_dist)
                                 result_str += (
                                     f"\n\n[高程数据] "
                                     f"累计爬升: {stats['elevation_gain']:.0f}m, "
@@ -331,6 +334,20 @@ def build_agent(checkpointer):
                                     f"最高点: {stats['max_elevation']:.0f}m, "
                                     f"最低点: {stats['min_elevation']:.0f}m"
                                 )
+                                elev_json = json.dumps(
+                                    {
+                                        "points": elev_with_dist,
+                                        "stats": {
+                                            "gain": round(stats["elevation_gain"]),
+                                            "loss": round(stats["elevation_loss"]),
+                                            "max": round(stats["max_elevation"]),
+                                            "min": round(stats["min_elevation"]),
+                                        },
+                                        "climbs": climbs,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                result_str += f"\n\n[ELEVATION_JSON]\n{elev_json}"
                         except Exception:
                             result_str += "\n\n[高程数据] 爬升数据暂不可用"
 

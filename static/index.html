@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>骑行路线助手</title>
+<link rel="icon" type="image/png" href="/asserts/icon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.5.6/dist/index.css">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -154,10 +155,86 @@
         <input type="text" id="message-input" v-model="messageInput" @keydown.enter="sendMessage" placeholder="输入消息，如「从朝阳公园骑到颐和园」">
         <button id="btn-send" @click="sendMessage" :disabled="!messageInput.trim() || isSending">发送</button>
       </div>
+
     </div>
 
-    <div id="map-container">
-      <div id="map"></div>
+    <div class="map-right" :class="{ 'has-elevation': elevationData != null }">
+      <div id="map-container">
+        <button v-if="climbSegments.length > 0" class="btn-climb-float" @click="openClimbSidebar">爬坡段</button>
+        <div id="map"></div>
+      </div>
+      <div id="elevation-panel" v-show="elevationData != null">
+        <div class="elevation-stats">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-distance">--</div>
+            <div class="stat-label">距离</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-gain">--</div>
+            <div class="stat-label">累计爬升</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-loss">--</div>
+            <div class="stat-label">累计下降</div>
+          </div>
+        </div>
+        <canvas id="elevation-canvas"></canvas>
+        <div class="climb-list" v-if="climbSegments.length > 0">
+          <div class="climb-list-title">爬坡段</div>
+          <div v-for="(seg, idx) in climbSegments" :key="idx"
+               class="climb-list-item" @click="activeClimbIndex = idx; openClimbSidebar()">
+            <span :class="['climb-difficulty', 'difficulty-' + seg.difficulty]">{{ seg.difficultyLabel }}</span>
+            <span>{{ seg.avgGrade }}%</span>
+            <span>{{ (seg.distance / 1000).toFixed(1) }} km</span>
+            <span>↑ {{ seg.elevationGain.toFixed(0) }} m</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Climb Segment Sidebar -->
+  <div id="climb-sidebar-overlay" :class="{ show: showClimbSidebar }" @click="closeClimbSidebar"></div>
+  <div id="climb-sidebar" :class="{ show: showClimbSidebar }">
+    <div class="climb-sidebar-header">
+      <button class="climb-nav-btn" @click="prevClimb" :disabled="!climbSegments.length || activeClimbIndex <= 0">&lt;</button>
+      <span class="climb-counter" v-if="climbSegments.length">第 {{ activeClimbIndex + 1 }} 个 / 共 {{ climbSegments.length }} 个</span>
+      <span class="climb-counter" v-else>无爬坡段</span>
+      <button class="climb-nav-btn" @click="nextClimb" :disabled="!climbSegments.length || activeClimbIndex >= climbSegments.length - 1">&gt;</button>
+      <button class="climb-close-btn" @click="closeClimbSidebar">&times;</button>
+    </div>
+    <div class="climb-sidebar-body" v-if="activeSegment">
+      <div class="climb-details">
+        <div class="climb-detail-row">
+          <span class="climb-detail-label">难度</span>
+          <span :class="['climb-difficulty', 'difficulty-' + activeSegment.difficulty]">{{ activeSegment.difficultyLabel }}</span>
+        </div>
+        <div class="climb-detail-row">
+          <span class="climb-detail-label">平均坡度</span>
+          <span class="climb-detail-value">{{ activeSegment.avgGrade }}%</span>
+        </div>
+        <div class="climb-detail-row">
+          <span class="climb-detail-label">距离</span>
+          <span class="climb-detail-value">{{ (activeSegment.distance / 1000).toFixed(2) }} km</span>
+        </div>
+        <div class="climb-detail-row">
+          <span class="climb-detail-label">累计爬升</span>
+          <span class="climb-detail-value">{{ activeSegment.elevationGain.toFixed(0) }} m</span>
+        </div>
+      </div>
+      <div class="climb-chart-container">
+        <canvas id="climb-canvas"></canvas>
+      </div>
+      <div class="climb-gradient-legend">
+        <span class="legend-dot l1"></span><span>&lt;3%</span>
+        <span class="legend-dot l2"></span><span>3-6%</span>
+        <span class="legend-dot l3"></span><span>6-9%</span>
+        <span class="legend-dot l4"></span><span>9-12%</span>
+        <span class="legend-dot l5"></span><span>&gt;12%</span>
+      </div>
+    </div>
+    <div class="climb-sidebar-body climb-empty" v-else>
+      <p>路线中未检测到爬坡段</p>
     </div>
   </div>
 
@@ -292,6 +369,20 @@ const app = createApp({
     const searchQuery = ref('');
     const lastChatRouteData = ref(null);
 
+    // Elevation & Climb state
+    const elevationData = ref(null);       // { points: [{lat, lon, ele, dist}, ...] }
+    const routeStats = reactive({ distance: 0, gain: 0, loss: 0 });
+    const climbSegments = ref([]);          // [{ startIdx, endIdx, avgGrade, distance, elevationGain, difficulty, difficultyLabel }, ...]
+    const activeClimbIndex = ref(0);
+    const showClimbSidebar = ref(false);
+    const activeSegment = computed(() => {
+      if (climbSegments.value.length === 0) return null;
+      return climbSegments.value[activeClimbIndex.value] || null;
+    });
+    const climbPolylines = ref([]);         // track climb overlay polylines
+    let _elevChartRaf = null;               // requestAnimationFrame id for debouncing
+    let _climbChartRaf = null;
+
     const routeForm = reactive({
       origin: '',
       destination: '',
@@ -307,6 +398,7 @@ const app = createApp({
 
     let map = null;
     let currentMarkers = [];
+    let distanceMarkers = [];
     let abortController = null;
 
     // Route management
@@ -595,6 +687,87 @@ const app = createApp({
     let _mapInitRetry = 0;
     const MAX_MAP_RETRIES = 10;
 
+    // --- Distance marker utilities ---
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // Earth radius in meters
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function interpolatePoint(p1, p2, ratio) {
+      return {
+        lng: p1.lng + (p2.lng - p1.lng) * ratio,
+        lat: p1.lat + (p2.lat - p1.lat) * ratio,
+      };
+    }
+
+    function findDistanceMarkers(points, intervalM) {
+      intervalM = intervalM || 5000;
+      const markers = [];
+      if (!points || points.length < 2) return markers;
+
+      let cumDist = 0;
+      let nextMark = intervalM;
+
+      for (let i = 1; i < points.length; i++) {
+        const segDist = haversineDistance(
+          points[i - 1].lat, points[i - 1].lng,
+          points[i].lat, points[i].lng
+        );
+        while (cumDist + segDist >= nextMark && nextMark <= cumDist + segDist + 0.01) {
+          const remaining = nextMark - cumDist;
+          const ratio = segDist > 0 ? remaining / segDist : 0;
+          const pt = interpolatePoint(points[i - 1], points[i], ratio);
+          markers.push({ lng: pt.lng, lat: pt.lat, distKm: nextMark / 1000 });
+          nextMark += intervalM;
+        }
+        cumDist += segDist;
+      }
+      return markers;
+    }
+
+    function renderDistanceMarkers(markerPoints) {
+      // Clean up old markers managed by us (map.clearOverlays removes them from map,
+      // but we still clear our reference array before repopulating)
+      distanceMarkers = [];
+      if (!map || !markerPoints || markerPoints.length === 0) return;
+
+      for (const mp of markerPoints) {
+        const labelContent = [
+          '<div style="',
+            'display:flex;align-items:center;justify-content:center;',
+            'transform:translate(-50%,-50%);',
+            'width:22px;height:22px;',
+            'border-radius:50%;',
+            'background:#fff;',
+            'border:1.5px solid #3a3a3a;',
+            'color:#1a1a1a;',
+            'font-size:11px;',
+            'font-weight:700;',
+            'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;',
+            'line-height:1;',
+            'box-shadow:0 1px 3px rgba(0,0,0,0.15);',
+          '">', mp.distKm.toFixed(0), '</div>'
+        ].join('');
+
+        const label = new BMapGL.Label(labelContent, {
+          position: new BMapGL.Point(mp.lng, mp.lat),
+          offset: new BMapGL.Size(0, 0),
+        });
+        label.setStyle({
+          border: 'none',
+          background: 'transparent',
+          padding: '0',
+        });
+        map.addOverlay(label);
+        distanceMarkers.push(label);
+      }
+    }
+
     function initMap() {
       if (map) return;
 
@@ -639,6 +812,17 @@ const app = createApp({
       if (!map) return;
       map.clearOverlays();
       currentMarkers = [];
+      distanceMarkers = [];
+      // Reset elevation state
+      elevationData.value = null;
+      routeStats.distance = 0;
+      routeStats.gain = 0;
+      routeStats.loss = 0;
+      climbSegments.value = [];
+      climbPolylines.value = [];
+      activeClimbIndex.value = 0;
+      showClimbSidebar.value = false;
+      updateElevationPanel();
     }
 
     function drawRoute(routeData) {
@@ -715,6 +899,10 @@ const app = createApp({
         }
 
         map.setViewport(points);
+
+        // Add Garmin-style distance markers every 5km
+        const markerPoints = findDistanceMarkers(points);
+        renderDistanceMarkers(markerPoints);
       }
 
       for (const poi of pois) {
@@ -736,6 +924,339 @@ const app = createApp({
           map.addOverlay(m);
           currentMarkers.push(m);
         }
+      }
+    }
+
+    // ==============================
+    // Elevation & Climb Functions
+    // ==============================
+    function handleElevationData(data) {
+      const points = data.points || [];
+      elevationData.value = data;
+      if (points.length > 0) {
+        const totalDist = points[points.length - 1].dist;
+        routeStats.distance = totalDist;
+        // Use backend-computed stats for consistency with AI response
+        if (data.stats) {
+          routeStats.gain = data.stats.gain || 0;
+          routeStats.loss = data.stats.loss || 0;
+        }
+        updateElevationPanel();
+        Vue.nextTick(() => { drawElevationChart(); });
+        // Use backend-detected climb segments
+        const segments = data.climbs || [];
+        climbSegments.value = segments;
+        if (segments.length > 0) {
+          drawClimbSegmentsOnMap(points, segments);
+        }
+      }
+    }
+
+    function updateElevationPanel() {
+      const distEl = document.getElementById('stat-distance');
+      const gainEl = document.getElementById('stat-gain');
+      const lossEl = document.getElementById('stat-loss');
+      const placeholder = document.getElementById('elevation-placeholder');
+      if (!distEl) return;
+      if (routeStats.distance > 0) {
+        distEl.textContent = (routeStats.distance / 1000).toFixed(1) + ' km';
+        gainEl.textContent = routeStats.gain.toFixed(0) + ' m';
+        lossEl.textContent = routeStats.loss.toFixed(0) + ' m';
+        if (placeholder) placeholder.style.display = 'none';
+      } else {
+        distEl.textContent = '--';
+        gainEl.textContent = '--';
+        lossEl.textContent = '--';
+        if (placeholder) placeholder.style.display = '';
+      }
+    }
+
+    function drawElevationChart() {
+      if (_elevChartRaf) cancelAnimationFrame(_elevChartRaf);
+      _elevChartRaf = requestAnimationFrame(() => {
+      const canvas = document.getElementById('elevation-canvas');
+      if (!canvas) return;
+      const points = elevationData.value?.points;
+      if (!points || points.length < 2) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      let drawPoints = points;
+      if (points.length > 300) {
+        const step = Math.floor(points.length / 300);
+        drawPoints = points.filter((_, i) => i % step === 0);
+        if (drawPoints[drawPoints.length - 1] !== points[points.length - 1]) {
+          drawPoints.push(points[points.length - 1]);
+        }
+      }
+
+      const padding = { top: 16, right: 16, bottom: 32, left: 48 };
+      const pw = W - padding.left - padding.right;
+      const ph = H - padding.top - padding.bottom;
+
+      const maxDist = drawPoints[drawPoints.length - 1].dist;
+      let minEle = Infinity, maxEle = -Infinity;
+      for (const p of drawPoints) {
+        if (p.ele < minEle) minEle = p.ele;
+        if (p.ele > maxEle) maxEle = p.ele;
+      }
+      const eleRange = maxEle - minEle || 100;
+      minEle -= eleRange * 0.1;
+      maxEle += eleRange * 0.1;
+
+      // Grid & axes — Garmin style
+      ctx.strokeStyle = '#d5dce6';
+      ctx.lineWidth = 0.5;
+      ctx.fillStyle = '#5a6a7e';
+      ctx.font = '10px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+
+      const ySteps = 4;
+      for (let i = 0; i <= ySteps; i++) {
+        const y = padding.top + (ph / ySteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(W - padding.right, y);
+        ctx.stroke();
+        const val = maxEle - ((maxEle - minEle) / ySteps) * i;
+        ctx.fillText(Math.round(val) + 'm', 2, y + 3);
+      }
+
+      const xSteps = 5;
+      for (let i = 0; i <= xSteps; i++) {
+        const x = padding.left + (pw / xSteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, padding.top);
+        ctx.lineTo(x, H - padding.bottom);
+        ctx.stroke();
+        const val = (maxDist / xSteps) * i / 1000;
+        ctx.fillText(val.toFixed(1) + 'km', x - 20, H - 4);
+      }
+
+      // Filled area — Garmin green gradient
+      const grad = ctx.createLinearGradient(0, padding.top, 0, H - padding.bottom);
+      grad.addColorStop(0, 'rgba(76,175,80,0.45)');
+      grad.addColorStop(0.4, 'rgba(129,199,132,0.20)');
+      grad.addColorStop(1, 'rgba(200,230,201,0.02)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      for (let i = 0; i < drawPoints.length; i++) {
+        const x = padding.left + (drawPoints[i].dist / maxDist) * pw;
+        const y = padding.top + ((maxEle - drawPoints[i].ele) / (maxEle - minEle)) * ph;
+        if (i === 0) ctx.moveTo(x, H - padding.bottom);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(padding.left + pw, H - padding.bottom);
+      ctx.closePath();
+      ctx.fill();
+      // Green curve stroke on top
+      ctx.strokeStyle = '#66bb6a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < drawPoints.length; i++) {
+        const x = padding.left + (drawPoints[i].dist / maxDist) * pw;
+        const y = padding.top + ((maxEle - drawPoints[i].ele) / (maxEle - minEle)) * ph;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      }); // end requestAnimationFrame
+    }
+
+    function classifyClimb(avgGrade, distanceM) {
+      // UCI standard: Score = length_km × grade_pct²
+      // Qualification: min 1000m, min 1.3%
+      if (distanceM < 1000 || avgGrade < 1.3) return { level: 0, label: '未评级' };
+      const score = (distanceM / 1000) * (avgGrade * avgGrade);
+      if (score > 600) return { level: 5, label: 'HC级' };
+      if (score >= 400) return { level: 4, label: '1级' };
+      if (score >= 200) return { level: 3, label: '2级' };
+      if (score >= 80) return { level: 2, label: '3级' };
+      if (score >= 20) return { level: 1, label: '4级' };
+      return { level: 0, label: '未评级' };
+    }
+
+    function drawClimbSegmentsOnMap(points, segments) {
+      if (!map || !points || !segments) return;
+      // Remove old climb polylines
+      for (const pl of climbPolylines.value) {
+        if (pl) map.removeOverlay(pl);
+      }
+      climbPolylines.value = [];
+      const gradeColors = [
+        null,                    // 0: unused
+        '#4caf50',              // 1: green  <3% (4级)
+        '#fdd835',              // 2: yellow 3-6% (3级)
+        '#ff9800',              // 3: orange 6-9% (2级)
+        '#e53935',              // 4: red 9-12% (1级)
+        '#880e0e',              // 5: deep red >12% (HC)
+      ];
+      for (const seg of segments) {
+        const segPoints = [];
+        for (let j = seg.startIdx; j <= seg.endIdx && j < points.length; j++) {
+          segPoints.push(new BMapGL.Point(points[j].lon, points[j].lat));
+        }
+        if (segPoints.length >= 2) {
+          const color = gradeColors[seg.difficulty] || '#ff9800';
+          const pl = new BMapGL.Polyline(segPoints, {
+            strokeColor: color,
+            strokeWeight: 8,
+            strokeOpacity: 0.75,
+          });
+          map.addOverlay(pl);
+          climbPolylines.value.push(pl);
+        }
+      }
+    }
+
+    function drawClimbChart(canvas, segment, points) {
+      if (!canvas || !segment || !points) return;
+      if (_climbChartRaf) cancelAnimationFrame(_climbChartRaf);
+      _climbChartRaf = requestAnimationFrame(() => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const segPoints = points.slice(segment.startIdx, segment.endIdx + 1);
+      if (segPoints.length < 2) return;
+
+      const padding = { top: 10, right: 16, bottom: 36, left: 48 };
+      const pw = W - padding.left - padding.right;
+      const ph = H - padding.top - padding.bottom;
+
+      let minEle = Infinity, maxEle = -Infinity;
+      for (const p of segPoints) {
+        if (p.ele < minEle) minEle = p.ele;
+        if (p.ele > maxEle) maxEle = p.ele;
+      }
+      const eleRange = maxEle - minEle || 50;
+      minEle -= eleRange * 0.15;
+      maxEle += eleRange * 0.15;
+
+      const segDist = segPoints[segPoints.length - 1].dist - segPoints[0].dist || 1;
+
+      // Y-axis grid + labels
+      ctx.strokeStyle = '#e0dbd0';
+      ctx.lineWidth = 0.5;
+      ctx.fillStyle = '#6c6c6c';
+      ctx.font = '10px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.textAlign = 'right';
+      const ySteps = 3;
+      for (let i = 0; i <= ySteps; i++) {
+        const y = padding.top + (ph / ySteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(W - padding.right, y);
+        ctx.stroke();
+        const val = Math.round(maxEle - ((maxEle - minEle) / ySteps) * i);
+        ctx.fillText(val + 'm', padding.left - 4, y + 4);
+      }
+      // Y-axis title
+      ctx.save();
+      ctx.translate(10, padding.top + ph / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#808080';
+      ctx.font = '11px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText('海拔 (m)', 0, 0);
+      ctx.restore();
+
+      // X-axis labels
+      const xSteps = 4;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#6c6c6c';
+      ctx.font = '10px -apple-system,BlinkMacSystemFont,sans-serif';
+      for (let i = 0; i <= xSteps; i++) {
+        const x = padding.left + (pw / xSteps) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, padding.top);
+        ctx.lineTo(x, H - padding.bottom);
+        ctx.stroke();
+        const val = (segDist / xSteps) * i / 1000;
+        ctx.fillText(val.toFixed(1) + 'km', x, H - padding.bottom + 14);
+      }
+      // X-axis title
+      ctx.fillStyle = '#808080';
+      ctx.font = '11px -apple-system,BlinkMacSystemFont,sans-serif';
+      ctx.fillText('距离 (km)', padding.left + pw / 2, H - 4);
+
+      // Fill with gradient color by grade
+      for (let i = 1; i < segPoints.length; i++) {
+        const dH = segPoints[i].ele - segPoints[i - 1].ele;
+        const dD = segPoints[i].dist - segPoints[i - 1].dist;
+        const grade = dD > 0 ? Math.abs(dH / dD) : 0;
+        let color;
+        if (grade < 0.03) color = 'rgba(76,175,80,0.5)';
+        else if (grade < 0.06) color = 'rgba(253,216,53,0.5)';
+        else if (grade < 0.09) color = 'rgba(255,152,0,0.5)';
+        else if (grade < 0.12) color = 'rgba(229,57,53,0.5)';
+        else color = 'rgba(136,14,14,0.5)';
+
+        const x1 = padding.left + ((segPoints[i - 1].dist - segPoints[0].dist) / segDist) * pw;
+        const y1 = padding.top + ((maxEle - segPoints[i - 1].ele) / (maxEle - minEle)) * ph;
+        const x2 = padding.left + ((segPoints[i].dist - segPoints[0].dist) / segDist) * pw;
+        const y2 = padding.top + ((maxEle - segPoints[i].ele) / (maxEle - minEle)) * ph;
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x1, H - padding.bottom);
+        ctx.lineTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x2, H - padding.bottom);
+        ctx.closePath();
+        ctx.fill();
+      }
+      }); // end requestAnimationFrame
+    }
+
+    function openClimbSidebar() {
+      if (climbSegments.value.length === 0) return;
+      activeClimbIndex.value = 0;
+      showClimbSidebar.value = true;
+      Vue.nextTick(() => {
+        const seg = activeSegment.value;
+        if (seg) drawClimbChart(document.getElementById('climb-canvas'), seg, elevationData.value?.points || []);
+      });
+    }
+
+    function closeClimbSidebar() {
+      showClimbSidebar.value = false;
+    }
+
+    function prevClimb() {
+      if (activeClimbIndex.value > 0) {
+        activeClimbIndex.value--;
+        Vue.nextTick(() => {
+          const seg = activeSegment.value;
+          if (seg) drawClimbChart(document.getElementById('climb-canvas'), seg, elevationData.value?.points || []);
+        });
+      }
+    }
+
+    function nextClimb() {
+      if (activeClimbIndex.value < climbSegments.value.length - 1) {
+        activeClimbIndex.value++;
+        Vue.nextTick(() => {
+          const seg = activeSegment.value;
+          if (seg) drawClimbChart(document.getElementById('climb-canvas'), seg, elevationData.value?.points || []);
+        });
       }
     }
 
@@ -794,6 +1315,9 @@ const app = createApp({
                     assistantMsg.content = formatText(fullText) + buildRouteCard(data);
                     drawRoute(data);
                     lastChatRouteData.value = data;
+                    break;
+                  case 'elevation':
+                    handleElevationData(data);
                     break;
                   case 'tool_start':
                     assistantMsg.content = fullText || `<span class="tool-indicator">正在调用 ${data.tool}...</span>`;
@@ -893,6 +1417,8 @@ const app = createApp({
                   assistantMsg.content = formatText(fullText) + buildRouteCard(data);
                   drawRoute(data);
                   lastChatRouteData.value = data;
+                } else if (currentEvent === 'elevation') {
+                  handleElevationData(data);
                 } else if (currentEvent === 'done') {
                   if (data.thread_id) {
                     threadId.value = data.thread_id;
@@ -946,6 +1472,25 @@ const app = createApp({
     }
 
     function formatText(text) {
+      // Markdown table → HTML table
+      text = text.replace(/(?:^|\n)(\|[^\n]+\|\n\|[-: |]+\|\n(?:\|[^\n]+\|\n?)+)/gm, (match) => {
+        const lines = match.trim().split('\n');
+        if (lines.length < 2) return match;
+        let html = '<table class="md-table"><thead><tr>';
+        const headers = lines[0].split('|').filter(c => c.trim());
+        headers.forEach(h => { html += '<th>' + h.trim() + '</th>'; });
+        html += '</tr></thead><tbody>';
+        for (let i = 2; i < lines.length; i++) {
+          const cells = lines[i].split('|').filter(c => c.trim() !== '');
+          if (cells.length > 0) {
+            html += '<tr>';
+            cells.forEach(c => { html += '<td>' + c.trim() + '</td>'; });
+            html += '</tr>';
+          }
+        }
+        html += '</tbody></table>';
+        return html;
+      });
       return text
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\n/g, '<br>');
@@ -1029,7 +1574,13 @@ const app = createApp({
       try {
         const resp = await apiFetch(`/api/routes/${route.id}`);
         const data = await resp.json();
-        const points = (data.track_data || []).map(
+        let trackForMap = data.track_data || [];
+        // Frontend polyline downsampling for smooth map rendering
+        if (trackForMap.length > 500) {
+          const step = Math.floor(trackForMap.length / 500);
+          trackForMap = trackForMap.filter((_, i) => i % step === 0).slice(0, 500);
+        }
+        const points = trackForMap.map(
           p => new BMapGL.Point(p.lon, p.lat)
         );
         if (points.length > 0) {
@@ -1050,6 +1601,16 @@ const app = createApp({
           }
 
           map.setViewport(points);
+
+          // Add Garmin-style distance markers every 5km
+          const markerPoints = findDistanceMarkers(points);
+          renderDistanceMarkers(markerPoints);
+
+          // Use backend-computed elevation data (points + stats + climbs)
+          if (data.elevation && data.elevation.points && data.elevation.points.length > 0) {
+            handleElevationData(data.elevation);
+          }
+
           ElMessage.success(`${data.name}: ${(data.distance / 1000).toFixed(1)}km, 爬升${data.elevation_gain.toFixed(0)}m`);
         }
       } catch (e) {
@@ -1163,7 +1724,24 @@ const app = createApp({
       for (const overlay of currentMarkers) {
         if (overlay) map.removeOverlay(overlay);
       }
+      for (const dm of distanceMarkers) {
+        if (dm) map.removeOverlay(dm);
+      }
+      for (const pl of climbPolylines.value) {
+        if (pl) map.removeOverlay(pl);
+      }
       currentMarkers = [];
+      distanceMarkers = [];
+      // Reset elevation state
+      elevationData.value = null;
+      routeStats.distance = 0;
+      routeStats.gain = 0;
+      routeStats.loss = 0;
+      climbSegments.value = [];
+      climbPolylines.value = [];
+      activeClimbIndex.value = 0;
+      showClimbSidebar.value = false;
+      updateElevationPanel();
     }
 
     // ==============================
@@ -1249,6 +1827,18 @@ const app = createApp({
       deleteRouteConfirm,
       lastChatRouteData,
       exportChatRoute,
+
+      // Elevation & Climb
+      elevationData,
+      routeStats,
+      climbSegments,
+      activeClimbIndex,
+      showClimbSidebar,
+      activeSegment,
+      openClimbSidebar,
+      closeClimbSidebar,
+      prevClimb,
+      nextClimb,
     };
   },
 });

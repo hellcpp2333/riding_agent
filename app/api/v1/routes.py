@@ -58,12 +58,17 @@ async def chat(
                         and not getattr(msg, "tool_calls", None)
                         and hasattr(msg, "content") and msg.content
                     ):
+                        text = ""
                         if isinstance(msg.content, str):
-                            yield {"event": "token", "data": json.dumps({"text": msg.content}, ensure_ascii=False)}
+                            text = msg.content
                         elif isinstance(msg.content, list):
                             for block in msg.content:
                                 if isinstance(block, dict) and block.get("type") == "text":
-                                    yield {"event": "token", "data": json.dumps({"text": block["text"]}, ensure_ascii=False)}
+                                    text += block.get("text", "")
+                        # Stream text character by character for real-time display
+                        if text:
+                            for ch in text:
+                                yield {"event": "token", "data": json.dumps({"text": ch}, ensure_ascii=False)}
 
                     tool_calls = getattr(msg, "tool_calls", None) or []
                     for tc in tool_calls:
@@ -74,21 +79,34 @@ async def chat(
 
                     if hasattr(msg, "type") and msg.type == "tool":
                         content = msg.content if hasattr(msg, "content") else str(msg)
+                        # 发送 route 事件（不含高程 JSON）
                         try:
                             if isinstance(content, str):
-                                json_str = content.split('\n\n[高程数据]')[0]
-                                data = json.loads(json_str)
+                                route_part = content.split('\n\n[ELEVATION_JSON]')[0]
+                                json_str = route_part.split('\n\n[高程数据]')[0]
+                                data_parsed = json.loads(json_str)
                             else:
-                                data = content
+                                data_parsed = content
                             yield {
                                 "event": "route",
-                                "data": json.dumps(data, ensure_ascii=False),
+                                "data": json.dumps(data_parsed, ensure_ascii=False),
                             }
                         except (json.JSONDecodeError, TypeError):
                             yield {
                                 "event": "tool_result",
                                 "data": json.dumps({"content": str(content)[:500]}, ensure_ascii=False),
                             }
+                        # 发送独立的 elevation 事件
+                        if isinstance(content, str) and '[ELEVATION_JSON]' in content:
+                            try:
+                                elev_block = content.split('[ELEVATION_JSON]\n', 1)[1].strip()
+                                elev_data = json.loads(elev_block)
+                                yield {
+                                    "event": "elevation",
+                                    "data": json.dumps(elev_data, ensure_ascii=False),
+                                }
+                            except (json.JSONDecodeError, IndexError):
+                                pass
 
         yield {"event": "done", "data": json.dumps({"thread_id": thread_id})}
 
@@ -132,19 +150,30 @@ async def plan_route(
                         and not getattr(msg, "tool_calls", None)
                         and hasattr(msg, "content") and msg.content
                     ):
-                        if isinstance(msg.content, str):
-                            yield {"event": "token", "data": json.dumps({"text": msg.content}, ensure_ascii=False)}
+                        text = msg.content if isinstance(msg.content, str) else ""
+                        if text:
+                            for ch in text:
+                                yield {"event": "token", "data": json.dumps({"text": ch}, ensure_ascii=False)}
                     elif hasattr(msg, "type") and msg.type == "tool":
                         content = msg.content if hasattr(msg, "content") else str(msg)
                         try:
                             if isinstance(content, str):
-                                json_str = content.split('\n\n[高程数据]')[0]
-                                data = json.loads(json_str)
+                                route_part = content.split('\n\n[ELEVATION_JSON]')[0]
+                                json_str = route_part.split('\n\n[高程数据]')[0]
+                                data_parsed = json.loads(json_str)
                             else:
-                                data = content
-                            yield {"event": "route", "data": json.dumps(data, ensure_ascii=False)}
+                                data_parsed = content
+                            yield {"event": "route", "data": json.dumps(data_parsed, ensure_ascii=False)}
                         except (json.JSONDecodeError, TypeError):
                             pass
+                        # 发送独立的 elevation 事件
+                        if isinstance(content, str) and '[ELEVATION_JSON]' in content:
+                            try:
+                                elev_block = content.split('[ELEVATION_JSON]\n', 1)[1].strip()
+                                elev_data = json.loads(elev_block)
+                                yield {"event": "elevation", "data": json.dumps(elev_data, ensure_ascii=False)}
+                            except (json.JSONDecodeError, IndexError):
+                                pass
         yield {"event": "done", "data": json.dumps({"thread_id": thread_id})}
 
     return EventSourceResponse(event_generator())
