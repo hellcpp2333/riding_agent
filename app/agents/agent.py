@@ -29,7 +29,7 @@ BAIDU_MAPS_API_KEY = os.environ["BAIDU_MAPS_API_KEY"]
 # NOTE: API key embedded in URL — avoid logging this URL in errors/traces
 BAIDU_MCP_URL = f"https://mcp.map.baidu.com/mcp?ak={BAIDU_MAPS_API_KEY}"
 
-LLM_TIMEOUT_S = 20
+LLM_TIMEOUT_S = 30
 MAX_MESSAGES = 20
 
 SYSTEM_PROMPT = (
