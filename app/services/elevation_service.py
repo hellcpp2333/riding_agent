@@ -398,7 +398,7 @@ def smooth_elevations(points: list[dict], window: int = 3) -> list[dict]:
     return result
 
 
-def calculate_elevation_stats(points: list[dict], min_gain_threshold: float = 3.0) -> dict:
+def calculate_elevation_stats(points: list[dict], min_gain_threshold: float = 4.0) -> dict:
     """计算爬升统计。Douglas-Peucker 平滑去噪后累加正负高差。points 需含 ele 字段。
     若 points 无 dist 字段，自动使用累积 Haversine 距离计算。
     """
