@@ -158,8 +158,10 @@ def _get_srtm_provider() -> SRTMProvider | None:
     global _srtm_provider, _use_local_dem
     if _srtm_provider is None and _use_local_dem is None:
         _srtm_provider = SRTMProvider()
-        # 检查是否有瓦片可用（抽查北京坐标）
-        _use_local_dem = _srtm_provider.has_tile(39.9, 116.4)
+        # 检查 data/srtm/ 目录下是否有 .hgt 瓦片
+        _use_local_dem = any(
+            p.suffix == '.hgt' for p in _srtm_provider._data_dir.iterdir()
+        )
         if not _use_local_dem:
             _srtm_provider = None
     return _srtm_provider
