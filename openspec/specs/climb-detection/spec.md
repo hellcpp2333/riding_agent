@@ -41,17 +41,23 @@ The system SHALL include detected climb segments in the `[ELEVATION_JSON]` block
 - **AND** the frontend SHALL parse this array and render the climb list and map overlays
 
 ### Requirement: Color-coded climb visualization on map
-The frontend SHALL render climb segments on the map as color-coded polylines matching Garmin's gradient color scheme.
+The frontend SHALL render climb segments on the map as color-coded polylines matching the unified climb gradient color scheme. The currently selected segment SHALL be visually highlighted with full opacity and heavier stroke weight, while non-selected segments SHALL appear at reduced opacity.
 
 #### Scenario: Climb segments rendered on map
 - **WHEN** climb segments data is available
 - **THEN** the frontend SHALL overlay polylines on the map for each climb segment
-- **AND** use color mapping: level 1 (green #4caf50), level 2 (yellow #fdd835), level 3 (orange #ff9800), level 4 (red #e53935), level 5 (dark red #880e0e)
+- **AND** use color mapping: level 1 (<3%, #D8F5A2), level 2 (3-6%, #F5BF2A), level 3 (6-9%, #F98925), level 4 (9-12%, #EE3E3E), level 5 (>12%, #B10D0D)
+
+#### Scenario: Selected climb segment highlighted on map
+- **WHEN** a specific climb segment is selected (via sidebar or list click)
+- **THEN** the selected segment polyline SHALL render at strokeOpacity 0.9 and strokeWeight 10
+- **AND** non-selected segments SHALL render at strokeOpacity 0.35 and strokeWeight 6
+- **AND** the map SHALL pan to center the selected segment
 
 ### Requirement: Elevation chart with gradient-colored climbs
-The frontend SHALL render the elevation profile chart with climb segments highlighted in gradient-appropriate colors, following Garmin's visualization style.
+The frontend SHALL render the elevation profile chart with climb segments highlighted in gradient-appropriate colors according to the unified color scheme.
 
 #### Scenario: Elevation chart renders climb segments
 - **WHEN** elevation data with climb segments is available
-- **THEN** the elevation canvas SHALL fill climb segment areas with intensity proportional to local gradient
-- **AND** the fill color SHALL transition from green (<3%) through yellow-orange-red to dark red (>12%)
+- **THEN** the elevation canvas SHALL fill climb segment areas with color corresponding to local gradient
+- **AND** the fill color SHALL transition from #D8F5A2 (<3%) through #F5BF2A (3-6%), #F98925 (6-9%), #EE3E3E (9-12%) to #B10D0D (>12%)
