@@ -942,7 +942,8 @@ const app = createApp({
           routeStats.loss = data.stats.loss || 0;
         }
         updateElevationPanel();
-        Vue.nextTick(() => { drawElevationChart(); });
+        // Wait for grid transition (0.3s) to complete before drawing chart
+        setTimeout(() => { Vue.nextTick(() => { drawElevationChart(); }); }, 350);
         // Use backend-detected climb segments
         const segments = data.climbs || [];
         climbSegments.value = segments;
@@ -1095,10 +1096,10 @@ const app = createApp({
       const gradeColors = [
         null,                    // 0: unused
         '#D8F5A2',              // 1: <3%
-        '#f5bf2a',              // 2: 3-6%
-        '#f98925',              // 3: 6-9%
-        '#ee3e3e',              // 4: 9-12%
-        '#b10d0d',              // 5: >12%
+        '#c0ca33',              // 2: 3-6%
+        '#f5bf2a',              // 3: 6-9%
+        '#f98925',              // 4: 9-12%
+        '#ee3e3e',              // 5: >12%
       ];
       for (const seg of segments) {
         const segPoints = [];
@@ -1106,7 +1107,7 @@ const app = createApp({
           segPoints.push(new BMapGL.Point(points[j].lon, points[j].lat));
         }
         if (segPoints.length >= 2) {
-          const color = gradeColors[seg.difficulty] || '#f98925';
+          const color = gradeColors[seg.difficulty] || '#ee3e3e';
           const pl = new BMapGL.Polyline(segPoints, {
             strokeColor: color,
             strokeWeight: 8,
@@ -1204,10 +1205,10 @@ const app = createApp({
         const grade = dD > 0 ? Math.abs(dH / dD) : 0;
         let color;
         if (grade < 0.03) color = 'rgba(216,245,162,0.5)';
-        else if (grade < 0.06) color = 'rgba(245,191,42,0.5)';
-        else if (grade < 0.09) color = 'rgba(249,137,37,0.5)';
-        else if (grade < 0.12) color = 'rgba(238,62,62,0.5)';
-        else color = 'rgba(177,13,13,0.5)';
+        else if (grade < 0.06) color = 'rgba(192,202,51,0.5)';
+        else if (grade < 0.09) color = 'rgba(245,191,42,0.5)';
+        else if (grade < 0.12) color = 'rgba(249,137,37,0.5)';
+        else color = 'rgba(238,62,62,0.5)';
 
         const x1 = padding.left + ((segPoints[i - 1].dist - segPoints[0].dist) / segDist) * pw;
         const y1 = padding.top + ((maxEle - segPoints[i - 1].ele) / (maxEle - minEle)) * ph;
