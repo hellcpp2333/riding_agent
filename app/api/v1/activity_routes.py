@@ -266,7 +266,7 @@ def _oss_upload(data: bytes, key: str) -> str:
     bucket = _get_bucket()
     bucket.put_object(key, data)
     config = _get_oss_config()
-    return f"https://{config['bucket']}.{config['endpoint']}/{key}"
+    return f"https://{config['bucket_name']}.{config['endpoint']}/{key}"
 
 
 async def _load_track_data(oss_url: str | None) -> list[dict]:
