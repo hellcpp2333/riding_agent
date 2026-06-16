@@ -1980,10 +1980,8 @@ const app = createApp({
     }
 
     async function deleteActivityConfirm(activityId) {
+      if (!confirm('确定要删除这条活动记录吗？')) return;
       try {
-        await ElMessageBox.confirm('确定要删除这条活动记录吗？', '确认删除', {
-          confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
-        });
         await apiFetch(`/api/activities/${activityId}`, { method: 'DELETE' });
         ElMessage.success('已删除');
         selectedActivity.value = null;
@@ -1991,7 +1989,7 @@ const app = createApp({
         clearMap();
         await loadActivities();
       } catch (e) {
-        if (e !== 'cancel') ElMessage.error('删除失败');
+        ElMessage.error('删除失败: ' + e.message);
       }
     }
 

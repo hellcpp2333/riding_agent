@@ -59,14 +59,6 @@ async def upload_activity(
 
     # 计算摘要
     summary = compute_ride_summary(fit_data["records"])
-    # 调试：检查 record 中有哪些非空字段
-    sample = fit_data["records"][0]
-    keys_with_val = [k for k, v in sample.items() if v is not None]
-    print(f"[FIT] sample record keys: {keys_with_val}")
-    print(f"[FIT] sample record: { {k: sample[k] for k in keys_with_val} }")
-    power_count = sum(1 for r in fit_data["records"] if r.get("power") and r["power"] > 0)
-    print(f"[FIT] power records: {power_count}/{len(fit_data['records'])}, "
-          f"avg_power={summary.get('avg_power')}, np={summary.get('np')}")
 
     # 上传 FIT 和轨迹到 OSS
     ts = uuid.uuid4().hex[:8]
