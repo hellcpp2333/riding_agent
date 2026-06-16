@@ -13,7 +13,7 @@ import app.db_mysql as db_mysql
 from app.models import ActivityRecord, FitnessProfile, User
 from app.services.fit_service import compute_ride_summary, parse_fit
 from app.services.fitness_service import estimate_ftp_from_activities, evaluate_route_difficulty
-from app.services.route_service import upload_gpx_to_oss as upload_to_oss
+from app.services.route_service import download_gpx_from_oss, delete_gpx_from_oss
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
@@ -59,22 +59,22 @@ async def upload_activity(
 
     # 计算摘要
     summary = compute_ride_summary(fit_data["records"])
+    # 调试：检查 record 中有哪些非空字段
+    sample = fit_data["records"][0]
+    keys_with_val = [k for k, v in sample.items() if v is not None]
+    print(f"[FIT] sample record keys: {keys_with_val}")
+    print(f"[FIT] sample record: { {k: sample[k] for k in keys_with_val} }")
     power_count = sum(1 for r in fit_data["records"] if r.get("power") and r["power"] > 0)
     print(f"[FIT] power records: {power_count}/{len(fit_data['records'])}, "
-          f"avg_power={summary.get('avg_power')}, np={summary.get('np')}, "
-          f"power_curve keys={list(summary.get('power_curve', {}).keys())}")
+          f"avg_power={summary.get('avg_power')}, np={summary.get('np')}")
 
-    # 上传原始 FIT 到 OSS
+    # 上传 FIT 和轨迹到 OSS
     ts = uuid.uuid4().hex[:8]
-    ext = ".fit"
     safe_name = fit_data["name"].replace("/", "_").replace(" ", "_")[:64]
-    fit_key = f"activities/{user.id}/{safe_name}_{ts}{ext}"
-    fit_oss_url = upload_to_oss(data, fit_key, user.id)
-
-    # 上传轨迹 JSON 到 OSS（如果数据量大）
+    fit_oss_url = _oss_upload(data, f"activities/{user.id}/{safe_name}_{ts}.fit")
     track_data = summary.pop("track_data", [])
     track_json = json.dumps(track_data, ensure_ascii=False).encode()
-    track_oss_url = upload_to_oss(track_json, f"activities/{user.id}/{safe_name}_{ts}_track.json", user.id)
+    track_oss_url = _oss_upload(track_json, f"activities/{user.id}/{safe_name}_{ts}_track.json")
 
     # 保存活动记录
     async with db_mysql.async_session_factory() as session:
@@ -179,8 +179,6 @@ async def delete_activity(
     activity_id: int,
     user: User = Depends(get_current_user),
 ):
-    from app.services.route_service import delete_gpx_from_oss as delete_oss
-
     async with db_mysql.async_session_factory() as session:
         stmt = select(ActivityRecord).where(
             ActivityRecord.id == activity_id,
@@ -191,11 +189,13 @@ async def delete_activity(
         if not record:
             raise HTTPException(404, "活动记录不存在")
 
-        # 删除 OSS 文件
-        if record.fit_oss_url:
-            delete_oss(record.fit_oss_url)
-        if record.track_data_oss_url:
-            delete_oss(record.track_data_oss_url)
+        # 删除 OSS 文件（忽略失败，不阻塞数据库删除）
+        for url in (record.fit_oss_url, record.track_data_oss_url):
+            if url:
+                try:
+                    delete_gpx_from_oss(url)
+                except Exception:
+                    pass
 
         await session.delete(record)
         await session.commit()
@@ -258,6 +258,15 @@ async def _get_fitness(user_id: int) -> FitnessProfile | None:
         stmt = select(FitnessProfile).where(FitnessProfile.user_id == user_id)
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+
+def _oss_upload(data: bytes, key: str) -> str:
+    """上传文件到 OSS，返回访问 URL。"""
+    from app.services.route_service import _get_bucket, _get_oss_config
+    bucket = _get_bucket()
+    bucket.put_object(key, data)
+    config = _get_oss_config()
+    return f"https://{config['bucket']}.{config['endpoint']}/{key}"
 
 
 async def _load_track_data(oss_url: str | None) -> list[dict]:
