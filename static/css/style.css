@@ -271,4 +271,29 @@ table.md-table tr:hover td{background:rgba(0,0,0,0.04)}
 .el-button:not(.el-button--primary){background:var(--color-bg)!important;border-color:var(--color-border)!important;color:var(--color-text)!important;transition:border-color var(--transition-base),color var(--transition-base)}
 .el-button:not(.el-button--primary):hover{border-color:var(--color-primary)!important;color:var(--color-primary)!important}
 
+/* Activity */
+#activities-view{flex:1;overflow-y:auto;padding:var(--space-4)}
+.activity-detail{display:flex;flex-direction:column;gap:var(--space-3)}
+.activity-detail-header{margin-bottom:var(--space-1)}
+.act-name{font-size:var(--font-lg);font-weight:var(--font-weight-bold);color:var(--color-text)}
+.act-date{font-size:var(--font-xs);color:var(--color-text-tertiary);margin-left:var(--space-2)}
+.act-stats-row{display:flex;gap:var(--space-3);flex-wrap:wrap}
+.act-stat{display:flex;flex-direction:column;align-items:center;min-width:60px;background:var(--color-bg);border-radius:var(--radius-md);padding:6px 10px;border:1px solid var(--color-border-light)}
+.act-stat .v{font-size:var(--font-lg);font-weight:var(--font-weight-bold);color:var(--color-text)}
+.act-stat .l{font-size:10px;color:var(--color-text-tertiary)}
+.act-stat .match-轻松{color:#2e7d32}
+.act-stat .match-适合{color:#3a7d44}
+.act-stat .match-有挑战{color:#ef6c00}
+.act-stat .match-超出能力{color:#c62828}
+.act-chart-section{background:var(--color-surface);border:1px solid var(--color-border-light);border-radius:var(--radius-md);padding:var(--space-3)}
+.act-chart-title{font-size:var(--font-sm);font-weight:var(--font-weight-semibold);color:var(--color-text-secondary);margin-bottom:var(--space-2)}
+#power-curve-canvas{width:100%;height:200px}
+.hr-zones-bars{display:flex;flex-direction:column;gap:4px}
+.hr-zone-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-sm)}
+.hr-zone-label{width:28px;color:var(--color-text-secondary);font-weight:var(--font-weight-medium)}
+.hr-zone-bar-bg{flex:1;height:14px;background:var(--color-bg);border-radius:var(--radius-sm);overflow:hidden}
+.hr-zone-bar-fill{height:100%;background:var(--color-primary);border-radius:var(--radius-sm)}
+.hr-zone-pct{width:40px;text-align:right;color:var(--color-text-tertiary)}
+.fitness-match-info{font-size:var(--font-sm);color:var(--color-text-secondary);display:flex;flex-direction:column;gap:2px}
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}
