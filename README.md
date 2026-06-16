@@ -14,6 +14,9 @@
 - **路书管理** — 列表查看、地图预览、删除管理
 - **路书导出** — 已保存路书一键下载 GPX，Agent 规划的路线也可导出
 - **Agent 路书分析** — 对话框中让 Agent 分析已保存路书的距离、爬升、难度
+- **FIT 文件上传** — 上传 Garmin/Wahoo 码表 `.fit` 文件，自动解析骑行数据
+- **骑行水平分析** — 基于功率曲线估算 FTP、功体比、骑行等级
+- **路线难度匹配** — 根据个人体能评估路线是否适合
 
 ## 技术栈
 
@@ -89,6 +92,13 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | GET | `/api/routes/{id}/export` | 下载 GPX 文件 |
 | DELETE | `/api/routes/{id}` | 删除路书 |
 | POST | `/api/routes/export-plan` | 导出规划路线为 GPX |
+| GET | `/api/activities` | 活动记录列表 |
+| POST | `/api/activities` | 上传 FIT 文件 |
+| GET | `/api/activities/{id}` | 活动详情（含轨迹、功率曲线、心率区间） |
+| DELETE | `/api/activities/{id}` | 删除活动记录 |
+| GET | `/api/fitness` | 当前体能档案（FTP、功体比、等级） |
+| GET | `/api/fitness/history` | FTP 变化趋势 |
+| POST | `/api/fitness/match-route/{id}` | 评估路线与体能匹配度 |
 
 ## 项目结构
 
@@ -102,7 +112,9 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 │   │       ├── routes.py         # 对话与路线规划 API
 │   │       ├── schemas.py        # 数据模型
 │   │       ├── user_routes.py    # 用户相关路由
-│   │       └── route_routes.py   # 路书导入导出 API
+│   │       ├── route_routes.py       # 路书导入导出 API
+│   │       ├── activity_routes.py    # 活动记录管理 API
+│   │       └── fitness_routes.py     # 体能查询 API
 │   ├── auth/
 │   │   ├── routes.py             # 认证路由
 │   │   ├── utils.py              # JWT 工具
@@ -112,8 +124,13 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 │   ├── redis_client.py           # Redis 客户端
 │   ├── models.py                 # ORM 模型
 │   └── services/
-│       ├── oss_service.py        # OSS 上传服务（头像）
-│       └── route_service.py      # GPX 解析、距离计算、OSS 操作
+│       ├── oss_service.py          # OSS 上传服务（头像）
+│       ├── elevation_service.py    # 高程查询、爬坡检测、坐标转换
+│       ├── dem_service.py          # 本地 SRTM DEM 高程服务
+│       ├── fit_service.py          # FIT 解析、Power Curve、NP/TSS/IF
+│       ├── fitness_service.py      # FTP 估算、骑行等级、路线匹配
+│       └── route_service.py        # GPX 解析、距离计算、OSS 操作
+	├── data/srtm/                   # 本地 SRTM DEM 瓦片
 ├── main.py                 # FastAPI 入口
 ├── static/index.html             # 前端页面
 ├── tests/                        # 测试
