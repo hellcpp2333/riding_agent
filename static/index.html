@@ -58,6 +58,7 @@
         <div id="nav-tabs">
           <span :class="['nav-tab', { active: currentTab === 'chat' }]" @click="currentTab = 'chat'">对话</span>
           <span :class="['nav-tab', { active: currentTab === 'routes' }]" @click="currentTab = 'routes'">路书</span>
+          <span :class="['nav-tab', { active: currentTab === 'activities' }]" @click="currentTab = 'activities'">运动</span>
         </div>
         <select id="session-select" v-model="threadId" @change="onSessionChange">
           <option value="">新建会话</option>
@@ -142,6 +143,85 @@
         </div>
         <div class="routes-empty" v-else>
           <p>还没有路书，点击"+ 导入路书"上传 GPX 文件</p>
+        </div>
+      </div>
+
+      <div id="activities-view" v-show="currentTab === 'activities'">
+        <div v-if="!selectedActivity">
+          <div class="routes-toolbar">
+            <button class="btn-import" @click="triggerFitUpload">+ 上传 FIT</button>
+            <input type="file" ref="fitFileInput" accept=".fit" style="display:none" @change="handleFitUpload">
+          </div>
+          <div class="routes-list" v-if="savedActivities.length > 0">
+            <div v-for="act in savedActivities" :key="act.id"
+                 :class="['route-card', { selected: selectedActivity?.id === act.id }]"
+                 @click="selectActivity(act)">
+              <div class="route-card-header">
+                <span class="route-name">{{ act.name }}</span>
+                <span class="route-source-tag">骑行</span>
+              </div>
+              <div class="route-card-meta">
+                <span>{{ (act.distance / 1000).toFixed(1) }} km</span>
+                <span>{{ formatDuration(act.duration) }}</span>
+                <span v-if="act.avg_speed">{{ act.avg_speed.toFixed(1) }} km/h</span>
+                <span v-if="act.tss">TSS {{ act.tss.toFixed(0) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="routes-empty" v-else>
+            <p>还没有运动记录，点击"+ 上传 FIT"上传码表文件</p>
+            <p class="sub">支持 Garmin/Wahoo/行者等设备的 .fit 格式</p>
+          </div>
+        </div>
+        <!-- Activity Detail -->
+        <div v-if="selectedActivity" class="activity-detail">
+          <button class="btn-small" @click="selectedActivity = null" style="margin-bottom:8px">&larr; 返回列表</button>
+          <div class="activity-detail-header">
+            <span class="act-name">{{ activityDetail?.name }}</span>
+            <span class="act-date" v-if="activityDetail?.start_time">{{ formatDate(activityDetail.start_time) }}</span>
+          </div>
+          <div class="act-stats-row">
+            <div class="act-stat"><span class="v">{{ (activityDetail?.distance / 1000).toFixed(1) }}</span><span class="l">距离 km</span></div>
+            <div class="act-stat"><span class="v">{{ formatDuration(activityDetail?.duration) }}</span><span class="l">时长</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.elevation_gain?.toFixed(0) || '--' }}</span><span class="l">爬升 m</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.avg_speed?.toFixed(1) || '--' }}</span><span class="l">均速 km/h</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.avg_hr?.toFixed(0) || '--' }}</span><span class="l">心率 bpm</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.avg_power?.toFixed(0) || '--' }}</span><span class="l">功率 W</span></div>
+          </div>
+          <div class="act-stats-row">
+            <div class="act-stat"><span class="v">{{ activityDetail?.np?.toFixed(0) || '--' }}</span><span class="l">NP W</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.tss?.toFixed(0) || '--' }}</span><span class="l">TSS</span></div>
+            <div class="act-stat"><span class="v">{{ activityDetail?.if_score?.toFixed(2) || '--' }}</span><span class="l">IF</span></div>
+            <div class="act-stat" v-if="activityDetail?.fitness_match">
+              <span :class="['v', 'match-' + activityDetail.fitness_match.fit_level]">{{ activityDetail.fitness_match.fit_level }}</span>
+              <span class="l">体能匹配</span>
+            </div>
+          </div>
+          <div class="act-chart-section" v-if="activityDetail?.power_curve && Object.keys(activityDetail.power_curve).length > 0">
+            <div class="act-chart-title">Power Curve</div>
+            <canvas id="power-curve-canvas" style="width:100%;height:200px"></canvas>
+          </div>
+          <div class="act-chart-section" v-if="activityDetail?.hr_zones && Object.keys(activityDetail.hr_zones).length > 0">
+            <div class="act-chart-title">心率区间</div>
+            <div class="hr-zones-bars">
+              <div v-for="(pct, zone) in activityDetail.hr_zones" :key="zone" class="hr-zone-row">
+                <span class="hr-zone-label">{{ zone }}</span>
+                <div class="hr-zone-bar-bg"><div class="hr-zone-bar-fill" :style="{ width: pct + '%' }"></div></div>
+                <span class="hr-zone-pct">{{ pct }}%</span>
+              </div>
+            </div>
+          </div>
+          <div class="act-chart-section" v-if="activityDetail?.fitness_match?.key_challenges?.length">
+            <div class="act-chart-title">路线评估</div>
+            <div class="fitness-match-info">
+              <div v-for="c in activityDetail.fitness_match.key_challenges" :key="c">{{ c }}</div>
+              <div v-if="activityDetail.fitness_match.ftp_required">
+                需求 FTP: {{ activityDetail.fitness_match.ftp_required.toFixed(0) }}W
+                <span v-if="activityDetail.fitness_match.your_ftp"> / 你的 FTP: {{ activityDetail.fitness_match.your_ftp.toFixed(0) }}W</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn-small btn-danger" @click="deleteActivityConfirm(selectedActivity.id)" style="margin-top:12px">删除此记录</button>
         </div>
       </div>
 
@@ -444,6 +524,13 @@ const app = createApp({
     const savedRoutes = ref([]);
     const selectedRouteId = ref(null);
     const gpxFileInput = ref(null);
+
+    // Activity state
+    const savedActivities = ref([]);
+    const selectedActivity = ref(null);
+    const activityDetail = ref(null);
+    const fitFileInput = ref(null);
+    let _powerCurveRaf = null;
 
     // ==============================
     // API Helper with Auth
@@ -1798,6 +1885,180 @@ const app = createApp({
     }
 
     // ==============================
+    // Activity Functions
+    // ==============================
+    function triggerFitUpload() {
+      fitFileInput.value.click();
+    }
+
+    async function handleFitUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.fit')) {
+        ElMessage.error('仅支持 .fit 格式');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        ElMessage.error('文件大小不能超过 10MB');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const resp = await fetch('/api/activities', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth-token')}` },
+          body: formData,
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          ElMessage.error(err.detail || '上传失败');
+          return;
+        }
+        const data = await resp.json();
+        ElMessage.success(`上传成功: ${data.name} (${(data.distance / 1000).toFixed(1)}km)`);
+        await loadActivities();
+      } catch (e) {
+        ElMessage.error('上传失败: ' + e.message);
+      }
+      event.target.value = '';
+    }
+
+    async function loadActivities() {
+      try {
+        const resp = await apiFetch('/api/activities?page=1&page_size=50');
+        const data = await resp.json();
+        savedActivities.value = data || [];
+      } catch (e) {}
+    }
+
+    async function selectActivity(act) {
+      selectedActivity.value = act;
+      activityDetail.value = null;
+      try {
+        const resp = await apiFetch(`/api/activities/${act.id}`);
+        const data = await resp.json();
+        activityDetail.value = data;
+        await nextTick();
+        if (data.track_data && data.track_data.length > 0) {
+          drawActivityRoute(data.track_data);
+        }
+        if (data.power_curve && Object.keys(data.power_curve).length > 0) {
+          drawPowerCurveChart(data.power_curve);
+        }
+      } catch (e) {
+        ElMessage.error('加载活动详情失败');
+      }
+    }
+
+    function drawActivityRoute(trackData) {
+      clearMap();
+      const points = trackData
+        .filter(p => p.lat && p.lon)
+        .map(p => new BMapGL.Point(p.lon, p.lat));
+      if (points.length > 0) {
+        const polyline = new BMapGL.Polyline(points, {
+          strokeColor: '#e53935', strokeWeight: 5, strokeOpacity: 0.8,
+        });
+        map.addOverlay(polyline);
+        currentMarkers.push(polyline);
+        if (points.length >= 2) {
+          const s = new BMapGL.Marker(points[0], { title: '起点' });
+          const e = new BMapGL.Marker(points[points.length - 1], { title: '终点' });
+          map.addOverlay(s); map.addOverlay(e);
+          currentMarkers.push(s, e);
+        }
+        map.setViewport(points);
+      }
+    }
+
+    function drawPowerCurveChart(curve) {
+      if (_powerCurveRaf) cancelAnimationFrame(_powerCurveRaf);
+      _powerCurveRaf = requestAnimationFrame(() => {
+        const canvas = document.getElementById('power-curve-canvas');
+        if (!canvas) return;
+        const durations = [5, 30, 60, 300, 600, 1200, 1800, 2400, 3600];
+        const labels = ['5s', '30s', '1m', '5m', '10m', '20m', '30m', '40m', '60m'];
+        const values = durations.map(d => curve[String(d)] || null).filter(v => v !== null);
+        const usedLabels = durations.map((d, i) => curve[String(d)] ? labels[i] : null).filter(l => l);
+
+        if (values.length < 2) return;
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const W = rect.width, H = rect.height;
+        ctx.clearRect(0, 0, W, H);
+        const pad = { t: 16, r: 16, b: 32, l: 48 };
+        const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+        const maxV = Math.max(...values) * 1.1, minV = Math.min(...values) * 0.9;
+
+        ctx.strokeStyle = '#e0d8c8'; ctx.lineWidth = 0.5;
+        ctx.fillStyle = '#6b5e4a'; ctx.font = '10px -apple-system,BlinkMacSystemFont,sans-serif';
+        for (let i = 0; i <= 4; i++) {
+          const y = pad.t + (ph / 4) * i;
+          ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+          ctx.fillText(Math.round(maxV - ((maxV - minV) / 4) * i) + 'W', 2, y + 3);
+        }
+        for (let i = 0; i < usedLabels.length; i++) {
+          const x = pad.l + (pw / (usedLabels.length - 1)) * i;
+          ctx.fillText(usedLabels[i], x - 10, H - 4);
+        }
+
+        ctx.strokeStyle = '#ee3e3e'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < values.length; i++) {
+          const x = pad.l + (pw / (values.length - 1)) * i;
+          const y = pad.t + ((maxV - values[i]) / (maxV - minV)) * ph;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+        grad.addColorStop(0, 'rgba(238,62,62,0.2)');
+        grad.addColorStop(1, 'rgba(238,62,62,0.02)');
+        ctx.fillStyle = grad;
+        ctx.lineTo(pad.l + pw, H - pad.b);
+        ctx.lineTo(pad.l, H - pad.b);
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+
+    async function deleteActivityConfirm(activityId) {
+      if (!confirm('确定要删除这条活动记录吗？')) return;
+      try {
+        await apiFetch(`/api/activities/${activityId}`, { method: 'DELETE' });
+        ElMessage.success('已删除');
+        selectedActivity.value = null;
+        activityDetail.value = null;
+        clearMap();
+        await loadActivities();
+      } catch (e) {
+        ElMessage.error('删除失败: ' + e.message);
+      }
+    }
+
+    function formatDuration(sec) {
+      if (!sec) return '--';
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    function formatDate(d) {
+      if (!d) return '';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+
+    // ==============================
     // Init
     // ==============================
     onMounted(async () => {
@@ -1816,6 +2077,7 @@ const app = createApp({
 
       await checkAuth();
       loadRoutes();
+      loadActivities();
     });
 
     return {
@@ -1883,6 +2145,19 @@ const app = createApp({
       deleteRouteConfirm,
       lastChatRouteData,
       exportChatRoute,
+
+      // Activities
+      savedActivities,
+      selectedActivity,
+      activityDetail,
+      fitFileInput,
+      triggerFitUpload,
+      handleFitUpload,
+      loadActivities,
+      selectActivity,
+      deleteActivityConfirm,
+      formatDuration,
+      formatDate,
 
       // Elevation & Climb
       elevationData,

@@ -29,6 +29,8 @@ from app.api.v1 import router as api_v1_router
 from app.auth.routes import router as auth_router
 from app.api.v1.route_routes import router as route_router
 from app.api.v1.user_routes import router as user_router
+from app.api.v1.activity_routes import router as activity_router
+from app.api.v1.fitness_routes import router as fitness_router
 from app.db import DB_PATH
 from app.db_mysql import dispose_mysql, init_db, init_mysql_engine
 from app.redis_client import close_redis, init_redis
@@ -63,6 +65,8 @@ app.include_router(api_v1_router)
 app.include_router(auth_router)
 app.include_router(route_router)
 app.include_router(user_router)
+app.include_router(activity_router)
+app.include_router(fitness_router)
 
 
 @app.get("/")

@@ -5,6 +5,7 @@ from urllib.parse import quote
 import io
 
 from app.api.v1.schemas import (
+    FitnessMatchResponse,
     RouteDetailResponse,
     RouteExportPlanRequest,
     RouteImportResponse,
@@ -86,6 +87,32 @@ async def get_route(route_id: int, user: User = Depends(get_current_user)):
         except Exception:
             elevation_data = None
 
+        # 体能匹配评估
+        try:
+            from app.models import FitnessProfile
+            from app.services.fitness_service import evaluate_route_difficulty
+
+            async with db_mysql.async_session_factory() as db2:
+                stmt = select(FitnessProfile).where(FitnessProfile.user_id == user.id)
+                result = await db2.execute(stmt)
+                profile = result.scalar_one_or_none()
+
+            fitness = {
+                "ftp": profile.ftp if profile else None,
+                "ftp_wkg": profile.ftp_wkg if profile else None,
+                "fitness_level": profile.fitness_level if profile else "beginner",
+                "has_power": (profile is not None and profile.ftp is not None and profile.ftp > 0),
+            }
+            match_result = evaluate_route_difficulty(
+                route_distance_m=route.distance,
+                route_elevation_m=route.elevation_gain,
+                estimated_time_s=route.distance / 5.0,
+                user_fitness=fitness,
+            )
+            fitness_match = FitnessMatchResponse(**match_result)
+        except Exception:
+            fitness_match = None
+
         return RouteDetailResponse(
             id=route.id,
             name=route.name,
@@ -97,6 +124,7 @@ async def get_route(route_id: int, user: User = Depends(get_current_user)):
             created_at=route.created_at.isoformat() if route.created_at else "",
             track_data=[TrackPoint(lat=p["lat"], lon=p["lon"], ele=p.get("ele")) for p in track_points],
             elevation=elevation_data,
+            fitness_match=fitness_match,
         )
 
 
