@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import ActivityDetailResponse, ActivityListItem, FitnessMatchResponse, TrackPoint
 from app.auth.dependencies import get_current_user
-from app.db_mysql import async_session_factory
+import app.db_mysql as db_mysql
 from app.models import ActivityRecord, FitnessProfile, User
 from app.services.fit_service import compute_ride_summary, parse_fit
 from app.services.fitness_service import estimate_ftp_from_activities, evaluate_route_difficulty
@@ -26,7 +26,7 @@ async def list_activities(
     page_size: int = 20,
     user: User = Depends(get_current_user),
 ):
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = (
             select(ActivityRecord)
             .where(ActivityRecord.user_id == user.id)
@@ -73,7 +73,7 @@ async def upload_activity(
     track_oss_url = upload_to_oss(track_json, f"activities/{user.id}/{safe_name}_{ts}_track.json", user.id)
 
     # 保存活动记录
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         record = ActivityRecord(
             user_id=user.id,
             name=fit_data["name"],
@@ -112,7 +112,7 @@ async def get_activity(
     activity_id: int,
     user: User = Depends(get_current_user),
 ):
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = select(ActivityRecord).where(
             ActivityRecord.id == activity_id,
             ActivityRecord.user_id == user.id,
@@ -177,7 +177,7 @@ async def delete_activity(
 ):
     from app.services.route_service import delete_gpx_from_oss as delete_oss
 
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = select(ActivityRecord).where(
             ActivityRecord.id == activity_id,
             ActivityRecord.user_id == user.id,
@@ -205,7 +205,7 @@ async def _update_fitness(user_id: int):
     """上传活动后更新用户体能档案。"""
     from app.services.fit_service import compute_ftp_from_curve, merge_power_curves
 
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = (
             select(ActivityRecord)
             .where(ActivityRecord.user_id == user_id)
@@ -227,7 +227,7 @@ async def _update_fitness(user_id: int):
 
     fitness = estimate_ftp_from_activities(acts)
 
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = select(FitnessProfile).where(FitnessProfile.user_id == user_id)
         result = await session.execute(stmt)
         profile = result.scalar_one_or_none()
@@ -250,7 +250,7 @@ async def _update_fitness(user_id: int):
 
 
 async def _get_fitness(user_id: int) -> FitnessProfile | None:
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = select(FitnessProfile).where(FitnessProfile.user_id == user_id)
         result = await session.execute(stmt)
         return result.scalar_one_or_none()

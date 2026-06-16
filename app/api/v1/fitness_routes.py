@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import FitnessHistoryPoint, FitnessMatchResponse, FitnessProfileResponse
 from app.auth.dependencies import get_current_user
-from app.db_mysql import async_session_factory
+import app.db_mysql as db_mysql
 from app.models import ActivityRecord, FitnessProfile, User
 from app.services.fitness_service import evaluate_route_difficulty
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/fitness", tags=["fitness"])
 async def get_fitness(
     user: User = Depends(get_current_user),
 ):
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = select(FitnessProfile).where(FitnessProfile.user_id == user.id)
         result = await session.execute(stmt)
         profile = result.scalar_one_or_none()
@@ -49,7 +49,7 @@ async def get_fitness_history(
     """FTP 变化趋势：从每条活动记录的 power_curve 推导 FTP。"""
     from app.services.fit_service import compute_ftp_from_curve
 
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         stmt = (
             select(ActivityRecord)
             .where(ActivityRecord.user_id == user.id)
@@ -79,7 +79,7 @@ async def match_route(
     user: User = Depends(get_current_user),
 ):
     """评估特定路线与用户体能的匹配度。"""
-    async with async_session_factory() as session:
+    async with db_mysql.async_session_factory() as session:
         from app.models import Route
         stmt = select(Route).where(Route.id == route_id, Route.user_id == user.id)
         result = await session.execute(stmt)
