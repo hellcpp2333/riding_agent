@@ -92,6 +92,13 @@ class ActivityListItem(BaseModel):
         from_attributes = True
 
 
+class PowerSegment(BaseModel):
+    start_idx: int
+    end_idx: int
+    zone: int
+    avg_power: float
+
+
 class ActivityDetailResponse(BaseModel):
     id: int
     name: str
@@ -114,10 +121,19 @@ class ActivityDetailResponse(BaseModel):
     track_points: int
     created_at: datetime
     track_data: list[TrackPoint] = []
+    power_segments: list[PowerSegment] | None = None
+    power_profile: list[PowerProfilePoint] | None = None
     fitness_match: dict | None = None
 
     class Config:
         from_attributes = True
+
+
+class PowerProfilePoint(BaseModel):
+    time_sec: float
+    dist_km: float
+    power: int
+    hr: int | None = None
 
 
 # ── Fitness schemas ──────────────────────────────────────

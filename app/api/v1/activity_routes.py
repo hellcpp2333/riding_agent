@@ -7,11 +7,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.schemas import ActivityDetailResponse, ActivityListItem, FitnessMatchResponse, TrackPoint
+from app.api.v1.schemas import ActivityDetailResponse, ActivityListItem, FitnessMatchResponse, PowerProfilePoint, PowerSegment, TrackPoint
 from app.auth.dependencies import get_current_user
 import app.db_mysql as db_mysql
 from app.models import ActivityRecord, FitnessProfile, User
-from app.services.fit_service import compute_ride_summary, parse_fit
+from app.services.fit_service import (
+    aggregate_power_segments,
+    compute_power_zones,
+    compute_ride_summary,
+    parse_fit,
+    resolve_ftp,
+)
 from app.services.fitness_service import estimate_ftp_from_activities, evaluate_route_difficulty
 from app.services.route_service import download_gpx_from_oss, delete_gpx_from_oss
 
@@ -122,6 +128,87 @@ async def get_activity(
     # 加载轨迹数据
     track_data = await _load_track_data(record.track_data_oss_url)
 
+    # 计算功率区间路段
+    power_segments = None
+    has_power = any(p.get("power") for p in track_data)
+    if has_power:
+        try:
+            profile = await _get_fitness(user.id)
+            ftp = resolve_ftp(profile.ftp if profile else None)
+        except Exception:
+            ftp = 200.0
+        zones = compute_power_zones(track_data, ftp)
+        raw_segs = aggregate_power_segments(zones, track_data, min_points=5)
+        power_segments = [
+            PowerSegment(
+                start_idx=s["start_idx"],
+                end_idx=s["end_idx"],
+                zone=s["zone"],
+                avg_power=s["avg_power"],
+            )
+            for s in raw_segs
+        ]
+
+    # 计算功率剖面（距离+时间+功率，用于功率曲线图）
+    power_profile = None
+    if has_power:
+        # 预计算整个 track_data 的累计距离
+        from app.services.route_service import haversine_distance
+        cum_dist = [0.0]
+        for i in range(1, len(track_data)):
+            prev = track_data[i - 1]
+            curr = track_data[i]
+            plat, plon = prev.get("lat"), prev.get("lon")
+            clat, clon = curr.get("lat"), curr.get("lon")
+            if plat and plon and clat and clon:
+                d = haversine_distance(plat, plon, clat, clon)
+                cum_dist.append(cum_dist[-1] + d)
+            else:
+                cum_dist.append(cum_dist[-1])
+
+        profile_points: list[dict] = []
+        base_ts = None
+        for idx, p in enumerate(track_data):
+            ts = p.get("timestamp", 0)
+            power = p.get("power")
+            if ts and power is not None and power > 0:
+                if base_ts is None:
+                    base_ts = ts
+                time_sec = ts - base_ts
+                if time_sec >= 0:
+                    profile_points.append({
+                        "time_sec": float(time_sec),
+                        "dist_km": round(cum_dist[idx] / 1000.0, 3) if idx < len(cum_dist) else 0.0,
+                        "power": int(power),
+                        "hr": int(p["hr"]) if p.get("hr") and p["hr"] > 0 else None,
+                    })
+
+        # 降采样：超过 1000 点时取中位数
+        if len(profile_points) > 1000:
+            step = len(profile_points) / 1000
+            downsampled: list[dict] = []
+            for i in range(1000):
+                start = int(i * step)
+                end = int((i + 1) * step)
+                if start >= len(profile_points):
+                    break
+                chunk = profile_points[start:end]
+                if not chunk:
+                    continue
+                mid = chunk[len(chunk) // 2]
+                downsampled.append(mid)
+            profile_points = downsampled
+
+        power_profile = [
+            PowerProfilePoint(
+                time_sec=p["time_sec"],
+                dist_km=p["dist_km"],
+                power=p["power"],
+                hr=p["hr"],
+            )
+            for p in profile_points
+        ]
+
     # 加载体能匹配
     try:
         profile = await _get_fitness(user.id)
@@ -162,6 +249,8 @@ async def get_activity(
         track_points=record.track_points,
         created_at=record.created_at,
         track_data=[TrackPoint(lat=p["lat"], lon=p["lon"], ele=p.get("ele")) for p in track_data if p.get("lat") and p.get("lon")],
+        power_segments=power_segments,
+        power_profile=power_profile,
         fitness_match=match,
     )
 

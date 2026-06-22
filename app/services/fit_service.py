@@ -392,6 +392,133 @@ def compute_hr_zones(records: list[dict], max_hr: int | None = None) -> dict[str
     return zones
 
 
+# ── 功率区间计算 ──────────────────────────────────────────
+
+
+def compute_power_zones(track_data: list[dict], ftp: float) -> list[int]:
+    """将轨迹点按 %FTP 归入 7 个功率区间（Coggan 模型）。
+
+    Zone 0: 无功率数据 (power is None or 0)
+    Zone 1: Active Recovery  (0-55% FTP)
+    Zone 2: Endurance        (55-75% FTP)
+    Zone 3: Tempo            (75-90% FTP)
+    Zone 4: Threshold        (90-105% FTP)
+    Zone 5: VO2Max           (105-120% FTP)
+    Zone 6: Anaerobic        (120-150% FTP)
+    Zone 7: Neuromuscular    (>150% FTP)
+    """
+    if ftp <= 0:
+        ftp = 200.0  # 默认 FTP
+
+    zones: list[int] = []
+    for p in track_data:
+        power = p.get("power")
+        if power is None or power <= 0:
+            zones.append(0)
+            continue
+        pct = power / ftp
+        if pct < 0.55:
+            zones.append(1)
+        elif pct < 0.75:
+            zones.append(2)
+        elif pct < 0.90:
+            zones.append(3)
+        elif pct <= 1.05:
+            zones.append(4)
+        elif pct <= 1.20:
+            zones.append(5)
+        elif pct <= 1.50:
+            zones.append(6)
+        else:
+            zones.append(7)
+    return zones
+
+
+def aggregate_power_segments(
+    zones: list[int],
+    track_data: list[dict] | None = None,
+    min_points: int = 5,
+) -> list[dict]:
+    """将连续同区间点聚合成路段，过滤孤立 Z0 段，合并过小路段。
+
+    Returns:
+        [{"start_idx": int, "end_idx": int, "zone": int, "avg_power": float}, ...]
+    """
+    if not zones:
+        return []
+
+    n = len(zones)
+    # 第一遍：生成原始路段
+    raw_segs: list[dict] = []
+    i = 0
+    while i < n:
+        z = zones[i]
+        j = i
+        while j < n and zones[j] == z:
+            j += 1
+        # 计算该路段平均功率
+        avg_power = 0.0
+        if track_data and i < len(track_data):
+            pwr_vals = [
+                track_data[k].get("power", 0) or 0
+                for k in range(i, min(j, len(track_data)))
+            ]
+            avg_power = round(sum(pwr_vals) / len(pwr_vals), 1) if pwr_vals else 0.0
+
+        raw_segs.append({
+            "start_idx": i,
+            "end_idx": j - 1,
+            "zone": z,
+            "avg_power": avg_power,
+        })
+        i = j
+
+    # 第二遍：处理 Z0 孤立段 — 合并到前一段（或后一段）
+    merged: list[dict] = []
+    for idx, seg in enumerate(raw_segs):
+        if seg["zone"] == 0 and len(merged) > 0:
+            # 合并到前一个非 Z0 段
+            prev = merged[-1]
+            if prev["zone"] != 0:
+                prev["end_idx"] = seg["end_idx"]
+                continue
+        if seg["zone"] == 0 and idx + 1 < len(raw_segs):
+            # 合并到后一个非 Z0 段
+            nxt = raw_segs[idx + 1]
+            if nxt["zone"] != 0:
+                nxt["start_idx"] = seg["start_idx"]
+                continue
+        merged.append(seg)
+
+    # 第三遍：合并小于 min_points 的路段到相邻段
+    if min_points > 1:
+        result: list[dict] = []
+        i = 0
+        while i < len(merged):
+            seg = merged[i]
+            seg_len = seg["end_idx"] - seg["start_idx"] + 1
+            if seg_len < min_points and seg["zone"] != 0:
+                if len(result) > 0:
+                    result[-1]["end_idx"] = seg["end_idx"]
+                elif i + 1 < len(merged):
+                    merged[i + 1]["start_idx"] = seg["start_idx"]
+                else:
+                    result.append(seg)
+            else:
+                result.append(seg)
+            i += 1
+        return result
+
+    return merged
+
+
+def resolve_ftp(ftp: float | None) -> float:
+    """解析 FTP 值，若为空或无效则返回默认 200W。"""
+    if ftp is not None and ftp > 0:
+        return float(ftp)
+    return 200.0
+
+
 # ── 内部辅助 ──────────────────────────────────────────────
 
 def _extract_record(msg) -> dict:

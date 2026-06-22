@@ -288,9 +288,21 @@ table.md-table tr:hover td{background:rgba(0,0,0,0.04)}
 .act-stat .match-适合{color:#3a7d44}
 .act-stat .match-有挑战{color:#ef6c00}
 .act-stat .match-超出能力{color:#c62828}
-.act-chart-section{background:var(--color-surface);border:1px solid var(--color-border-light);border-radius:var(--radius-md);padding:var(--space-3)}
+.act-chart-section{background:var(--color-surface);border:1px solid var(--color-border-light);border-radius:var(--radius-md);padding:var(--space-3);position:relative}
 .act-chart-title{font-size:var(--font-sm);font-weight:var(--font-weight-semibold);color:var(--color-text-secondary);margin-bottom:var(--space-2)}
-#power-curve-canvas{width:100%;height:200px}
+#power-profile-canvas{width:100%;height:220px}
+
+/* Expand button for power chart */
+.btn-chart-expand{position:absolute;top:8px;right:8px;width:26px;height:26px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);color:var(--color-text-secondary);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;transition:background var(--transition-base),color var(--transition-base)}
+.btn-chart-expand:hover{background:rgba(255,255,255,0.18);color:var(--color-text)}
+
+/* Chart expand modal */
+.chart-modal-content{width:95vw;max-width:1400px;padding:var(--space-5)}
+.chart-modal-content .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4)}
+.chart-modal-content .modal-header h3{font-size:var(--font-lg);font-weight:var(--font-weight-semibold);color:var(--color-text);margin:0}
+.chart-modal-content .modal-close{width:32px;height:32px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);color:var(--color-text-secondary);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--transition-base),color var(--transition-base)}
+.chart-modal-content .modal-close:hover{background:rgba(255,255,255,0.18);color:var(--color-text)}
+#power-profile-canvas-expanded{width:100%;height:480px}
 .hr-zones-bars{display:flex;flex-direction:column;gap:4px}
 .hr-zone-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-sm)}
 .hr-zone-label{width:28px;color:var(--color-text-secondary);font-weight:var(--font-weight-medium)}
@@ -298,5 +310,21 @@ table.md-table tr:hover td{background:rgba(0,0,0,0.04)}
 .hr-zone-bar-fill{height:100%;background:var(--color-primary);border-radius:var(--radius-sm)}
 .hr-zone-pct{width:40px;text-align:right;color:var(--color-text-tertiary)}
 .fitness-match-info{font-size:var(--font-sm);color:var(--color-text-secondary);display:flex;flex-direction:column;gap:2px}
+
+/* ── Power Zone Legend ─────────────────────────────── */
+.power-legend{position:absolute;bottom:12px;left:12px;z-index:100;background:rgba(30,28,24,0.88);border:1px solid rgba(255,255,255,0.12);border-radius:var(--radius-md,8px);padding:10px 12px;min-width:150px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.power-legend-title{font-size:12px;font-weight:600;color:#e0d8c8;margin-bottom:6px;text-align:center}
+.power-legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px;color:#b0a898}
+.power-legend-row:last-child{margin-bottom:0}
+.power-legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.power-legend-label{white-space:nowrap}
+
+@media(max-width:600px){
+  .power-legend{padding:6px 8px;min-width:auto}
+  .power-legend-title{display:none}
+  .power-legend-label{display:none}
+  .power-legend-dot{width:12px;height:12px}
+  .power-legend-row{margin-bottom:4px;gap:0}
+}
 
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}
