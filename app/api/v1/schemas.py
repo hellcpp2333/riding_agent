@@ -132,8 +132,11 @@ class ActivityDetailResponse(BaseModel):
 class PowerProfilePoint(BaseModel):
     time_sec: float
     dist_km: float
-    power: int
+    power: int | None = None
     hr: int | None = None
+    speed: float | None = None
+    cadence: int | None = None
+    altitude: float | None = None
 
 
 # ── Fitness schemas ──────────────────────────────────────

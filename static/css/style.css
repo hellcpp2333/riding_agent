@@ -290,19 +290,19 @@ table.md-table tr:hover td{background:rgba(0,0,0,0.04)}
 .act-stat .match-超出能力{color:#c62828}
 .act-chart-section{background:var(--color-surface);border:1px solid var(--color-border-light);border-radius:var(--radius-md);padding:var(--space-3);position:relative}
 .act-chart-title{font-size:var(--font-sm);font-weight:var(--font-weight-semibold);color:var(--color-text-secondary);margin-bottom:var(--space-2)}
-#power-profile-canvas{width:100%;height:220px}
+#power-profile-canvas,#speed-canvas,#hr-time-canvas,#cadence-canvas,#elevation-canvas{width:100%;height:220px}
 
 /* Expand button for power chart */
 .btn-chart-expand{position:absolute;top:8px;right:8px;width:26px;height:26px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);color:var(--color-text-secondary);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;transition:background var(--transition-base),color var(--transition-base)}
 .btn-chart-expand:hover{background:rgba(255,255,255,0.18);color:var(--color-text)}
 
 /* Chart expand modal */
-.chart-modal-content{width:95vw;max-width:1400px;padding:var(--space-5)}
+.chart-modal-content{width:95vw;max-width:1800px;padding:var(--space-5)}
 .chart-modal-content .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4)}
 .chart-modal-content .modal-header h3{font-size:var(--font-lg);font-weight:var(--font-weight-semibold);color:var(--color-text);margin:0}
 .chart-modal-content .modal-close{width:32px;height:32px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);color:var(--color-text-secondary);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--transition-base),color var(--transition-base)}
 .chart-modal-content .modal-close:hover{background:rgba(255,255,255,0.18);color:var(--color-text)}
-#power-profile-canvas-expanded{width:100%;height:480px}
+#power-profile-canvas-expanded,#speed-canvas-expanded,#hr-time-canvas-expanded,#cadence-canvas-expanded,#elevation-canvas-expanded{width:100%;height:750px}
 .hr-zones-bars{display:flex;flex-direction:column;gap:4px}
 .hr-zone-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-sm)}
 .hr-zone-label{width:28px;color:var(--color-text-secondary);font-weight:var(--font-weight-medium)}

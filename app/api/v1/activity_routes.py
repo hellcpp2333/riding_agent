@@ -149,9 +149,9 @@ async def get_activity(
             for s in raw_segs
         ]
 
-    # 计算功率剖面（距离+时间+功率，用于功率曲线图）
+    # 计算时间序列剖面（距离+时间+功率/速度/心率/踏频/海拔，用于多通道曲线图）
     power_profile = None
-    if has_power:
+    if track_data:
         # 预计算整个 track_data 的累计距离
         from app.services.route_service import haversine_distance
         cum_dist = [0.0]
@@ -170,18 +170,27 @@ async def get_activity(
         base_ts = None
         for idx, p in enumerate(track_data):
             ts = p.get("timestamp", 0)
+            if not ts:
+                continue
+            if base_ts is None:
+                base_ts = ts
+            time_sec = ts - base_ts
+            if time_sec < 0:
+                continue
             power = p.get("power")
-            if ts and power is not None and power > 0:
-                if base_ts is None:
-                    base_ts = ts
-                time_sec = ts - base_ts
-                if time_sec >= 0:
-                    profile_points.append({
-                        "time_sec": float(time_sec),
-                        "dist_km": round(cum_dist[idx] / 1000.0, 3) if idx < len(cum_dist) else 0.0,
-                        "power": int(power),
-                        "hr": int(p["hr"]) if p.get("hr") and p["hr"] > 0 else None,
-                    })
+            hr = p.get("heart_rate")
+            spd = p.get("speed")  # m/s from FIT
+            cad = p.get("cadence")
+            alt = p.get("altitude")
+            profile_points.append({
+                "time_sec": float(time_sec),
+                "dist_km": round(cum_dist[idx] / 1000.0, 3) if idx < len(cum_dist) else 0.0,
+                "power": int(power) if power is not None and power > 0 else None,
+                "hr": int(hr) if hr is not None and hr > 0 else None,
+                "speed": round(spd * 3.6, 1) if spd is not None and spd > 0 else None,
+                "cadence": int(cad) if cad is not None and cad > 0 else None,
+                "altitude": round(float(alt), 1) if alt is not None else None,
+            })
 
         # 降采样：超过 1000 点时取中位数
         if len(profile_points) > 1000:
@@ -205,6 +214,9 @@ async def get_activity(
                 dist_km=p["dist_km"],
                 power=p["power"],
                 hr=p["hr"],
+                speed=p["speed"],
+                cadence=p["cadence"],
+                altitude=p["altitude"],
             )
             for p in profile_points
         ]
