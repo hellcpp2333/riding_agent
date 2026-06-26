@@ -99,6 +99,16 @@ class PowerSegment(BaseModel):
     avg_power: float
 
 
+class PowerProfilePoint(BaseModel):
+    time_sec: float
+    dist_km: float
+    power: int | None = None
+    hr: int | None = None
+    speed: float | None = None
+    cadence: int | None = None
+    altitude: float | None = None
+
+
 class ActivityDetailResponse(BaseModel):
     id: int
     name: str
@@ -127,16 +137,6 @@ class ActivityDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class PowerProfilePoint(BaseModel):
-    time_sec: float
-    dist_km: float
-    power: int | None = None
-    hr: int | None = None
-    speed: float | None = None
-    cadence: int | None = None
-    altitude: float | None = None
 
 
 # ── Fitness schemas ──────────────────────────────────────

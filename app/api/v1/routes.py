@@ -13,6 +13,33 @@ from app.models import User
 router = APIRouter()
 
 
+def _parse_tool_result(content) -> list[dict]:
+    """Parse tool result content into SSE events (route, tool_result, elevation)."""
+    events: list[dict] = []
+    try:
+        if isinstance(content, str):
+            route_part = content.split('\n\n[ELEVATION_JSON]')[0]
+            json_str = route_part.split('\n\n[高程数据]')[0]
+            data_parsed = json.loads(json_str)
+        else:
+            data_parsed = content
+        events.append({"event": "route", "data": json.dumps(data_parsed, ensure_ascii=False)})
+    except (json.JSONDecodeError, TypeError):
+        events.append({
+            "event": "tool_result",
+            "data": json.dumps({"content": str(content)[:500]}, ensure_ascii=False),
+        })
+
+    if isinstance(content, str) and '[ELEVATION_JSON]' in content:
+        try:
+            elev_block = content.split('[ELEVATION_JSON]\n', 1)[1].strip()
+            elev_data = json.loads(elev_block)
+            events.append({"event": "elevation", "data": json.dumps(elev_data, ensure_ascii=False)})
+        except (json.JSONDecodeError, IndexError):
+            pass
+    return events
+
+
 @router.get("/api/sessions")
 async def get_sessions(user: User = Depends(get_current_user)):
     return {"sessions": list_sessions()}
@@ -40,73 +67,49 @@ async def chat(
                 f"用户消息：{req.message}"
             )
 
-        async for event in request.app.state.agent_app.astream(
+        seen_tc_ids: set[str] = set()
+
+        async for event in request.app.state.agent_app.astream_events(
             {"messages": [("user", input_msg)]},
             config={
                 "configurable": {"thread_id": thread_id},
                 "recursion_limit": 30,
             },
-            stream_mode="updates",
+            version="v2",
         ):
-            for node_name, node_output in event.items():
-                if node_output is None:
-                    continue
-                msgs = node_output.get("messages", [])
-                for msg in msgs:
-                    if (
-                        hasattr(msg, "type") and msg.type == "ai"
-                        and not getattr(msg, "tool_calls", None)
-                        and hasattr(msg, "content") and msg.content
-                    ):
-                        text = ""
-                        if isinstance(msg.content, str):
-                            text = msg.content
-                        elif isinstance(msg.content, list):
-                            for block in msg.content:
-                                if isinstance(block, dict) and block.get("type") == "text":
-                                    text += block.get("text", "")
-                        # Stream text character by character for real-time display
-                        if text:
-                            for ch in text:
-                                yield {"event": "token", "data": json.dumps({"text": ch}, ensure_ascii=False)}
+            kind = event["event"]
 
-                    tool_calls = getattr(msg, "tool_calls", None) or []
-                    for tc in tool_calls:
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    text = (
+                        chunk.content if isinstance(chunk.content, str)
+                        else "".join(
+                            b.get("text", "") for b in chunk.content
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        )
+                    )
+                    if text:
+                        yield {"event": "token", "data": json.dumps({"text": text}, ensure_ascii=False)}
+
+            elif kind == "on_chat_model_end":
+                output = event["data"]["output"]
+                for tc in output.tool_calls or []:
+                    tc_id = tc.get("id", "")
+                    if tc.get("name") and tc.get("args") and tc_id not in seen_tc_ids:
+                        seen_tc_ids.add(tc_id)
                         yield {
                             "event": "tool_start",
-                            "data": json.dumps({"tool": tc.get("name", ""), "args": tc.get("args", {})}, ensure_ascii=False),
+                            "data": json.dumps({"tool": tc["name"], "args": tc["args"]}, ensure_ascii=False),
                         }
 
-                    if hasattr(msg, "type") and msg.type == "tool":
-                        content = msg.content if hasattr(msg, "content") else str(msg)
-                        # 发送 route 事件（不含高程 JSON）
-                        try:
-                            if isinstance(content, str):
-                                route_part = content.split('\n\n[ELEVATION_JSON]')[0]
-                                json_str = route_part.split('\n\n[高程数据]')[0]
-                                data_parsed = json.loads(json_str)
-                            else:
-                                data_parsed = content
-                            yield {
-                                "event": "route",
-                                "data": json.dumps(data_parsed, ensure_ascii=False),
-                            }
-                        except (json.JSONDecodeError, TypeError):
-                            yield {
-                                "event": "tool_result",
-                                "data": json.dumps({"content": str(content)[:500]}, ensure_ascii=False),
-                            }
-                        # 发送独立的 elevation 事件
-                        if isinstance(content, str) and '[ELEVATION_JSON]' in content:
-                            try:
-                                elev_block = content.split('[ELEVATION_JSON]\n', 1)[1].strip()
-                                elev_data = json.loads(elev_block)
-                                yield {
-                                    "event": "elevation",
-                                    "data": json.dumps(elev_data, ensure_ascii=False),
-                                }
-                            except (json.JSONDecodeError, IndexError):
-                                pass
+            elif kind == "on_chain_end" and event["name"] == "tools":
+                output = event["data"]["output"]
+                messages = output.get("messages", [])
+                for msg in messages:
+                    content = msg.content if hasattr(msg, "content") else str(msg)
+                    for evt in _parse_tool_result(content):
+                        yield evt
 
         yield {"event": "done", "data": json.dumps({"thread_id": thread_id})}
 
@@ -132,48 +135,50 @@ async def plan_route(
         prompt_parts.append("请优先选择绿道。")
 
     async def event_generator():
-        async for event in request.app.state.agent_app.astream(
+        seen_tc_ids: set[str] = set()
+
+        async for event in request.app.state.agent_app.astream_events(
             {"messages": [("user", "\n".join(prompt_parts))]},
             config={
                 "configurable": {"thread_id": thread_id},
                 "recursion_limit": 30,
             },
-            stream_mode="updates",
+            version="v2",
         ):
-            for node_name, node_output in event.items():
-                if node_output is None:
-                    continue
-                msgs = node_output.get("messages", [])
-                for msg in msgs:
-                    if (
-                        hasattr(msg, "type") and msg.type == "ai"
-                        and not getattr(msg, "tool_calls", None)
-                        and hasattr(msg, "content") and msg.content
-                    ):
-                        text = msg.content if isinstance(msg.content, str) else ""
-                        if text:
-                            for ch in text:
-                                yield {"event": "token", "data": json.dumps({"text": ch}, ensure_ascii=False)}
-                    elif hasattr(msg, "type") and msg.type == "tool":
-                        content = msg.content if hasattr(msg, "content") else str(msg)
-                        try:
-                            if isinstance(content, str):
-                                route_part = content.split('\n\n[ELEVATION_JSON]')[0]
-                                json_str = route_part.split('\n\n[高程数据]')[0]
-                                data_parsed = json.loads(json_str)
-                            else:
-                                data_parsed = content
-                            yield {"event": "route", "data": json.dumps(data_parsed, ensure_ascii=False)}
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                        # 发送独立的 elevation 事件
-                        if isinstance(content, str) and '[ELEVATION_JSON]' in content:
-                            try:
-                                elev_block = content.split('[ELEVATION_JSON]\n', 1)[1].strip()
-                                elev_data = json.loads(elev_block)
-                                yield {"event": "elevation", "data": json.dumps(elev_data, ensure_ascii=False)}
-                            except (json.JSONDecodeError, IndexError):
-                                pass
+            kind = event["event"]
+
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    text = (
+                        chunk.content if isinstance(chunk.content, str)
+                        else "".join(
+                            b.get("text", "") for b in chunk.content
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        )
+                    )
+                    if text:
+                        yield {"event": "token", "data": json.dumps({"text": text}, ensure_ascii=False)}
+
+            elif kind == "on_chat_model_end":
+                output = event["data"]["output"]
+                for tc in output.tool_calls or []:
+                    tc_id = tc.get("id", "")
+                    if tc.get("name") and tc.get("args") and tc_id not in seen_tc_ids:
+                        seen_tc_ids.add(tc_id)
+                        yield {
+                            "event": "tool_start",
+                            "data": json.dumps({"tool": tc["name"], "args": tc["args"]}, ensure_ascii=False),
+                        }
+
+            elif kind == "on_chain_end" and event["name"] == "tools":
+                output = event["data"]["output"]
+                messages = output.get("messages", [])
+                for msg in messages:
+                    content = msg.content if hasattr(msg, "content") else str(msg)
+                    for evt in _parse_tool_result(content):
+                        yield evt
+
         yield {"event": "done", "data": json.dumps({"thread_id": thread_id})}
 
     return EventSourceResponse(event_generator())

@@ -2087,7 +2087,7 @@ const app = createApp({
           drawSpeedChart(data.power_profile);
           drawHrChart(data.power_profile);
           drawCadenceChart(data.power_profile);
-          drawElevationChart(data.power_profile);
+          drawActivityElevationChart(data.power_profile);
         }
       } catch (e) {
         ElMessage.error('加载活动详情失败');
@@ -2470,13 +2470,13 @@ const app = createApp({
       valueKey: 'altitude', lineColor: '#8e44ad', fillColor: 'rgba(142,68,173,0.18)',
       unitLabel: 'm', avgLabel: v => '平均 ' + v + ' m',
     };
-    function drawElevationChart(profile) {
+    function drawActivityElevationChart(profile) {
       if (_elevationChartRaf) cancelAnimationFrame(_elevationChartRaf);
       _elevationChartRaf = requestAnimationFrame(() => {
         drawTimeSeriesChart('elevation-canvas', profile, ELEVATION_OPTS);
       });
     }
-    function drawElevationChartExpanded(profile) {
+    function drawActivityElevationChartExpanded(profile) {
       if (_elevationChartRaf) cancelAnimationFrame(_elevationChartRaf);
       _elevationChartRaf = requestAnimationFrame(() => {
         drawTimeSeriesChartExpanded('elevation-canvas-expanded', profile, ELEVATION_OPTS);
@@ -2524,7 +2524,7 @@ const app = createApp({
       showElevationModal.value = true;
       nextTick(() => {
         const profile = activityDetail.value?.power_profile;
-        if (profile && profile.length > 0) drawElevationChartExpanded(profile);
+        if (profile && profile.length > 0) drawActivityElevationChartExpanded(profile);
       });
     }
     function closeElevationModal() { showElevationModal.value = false; }
