@@ -75,6 +75,35 @@ def convert_points_bd09_to_wgs84(points: list[dict]) -> list[dict]:
     return result
 
 
+def _gcj02_to_bd09(lng: float, lat: float) -> tuple[float, float]:
+    """GCJ-02 → BD-09 坐标转换。"""
+    z = _math.sqrt(lng * lng + lat * lat) + 0.00002 * _math.sin(lat * _math.pi * 3000.0 / 180.0)
+    theta = _math.atan2(lat, lng) + 0.000003 * _math.cos(lng * _math.pi * 3000.0 / 180.0)
+    bd_lng = z * _math.cos(theta) + 0.0065
+    bd_lat = z * _math.sin(theta) + 0.006
+    return bd_lng, bd_lat
+
+
+def _wgs84_to_bd09(lng: float, lat: float) -> tuple[float, float]:
+    """WGS-84 → GCJ-02 → BD-09 坐标转换。"""
+    gcj_lng, gcj_lat = _wgs84_to_gcj02(lng, lat)
+    return _gcj02_to_bd09(gcj_lng, gcj_lat)
+
+
+def convert_points_wgs84_to_bd09(points: list[dict]) -> list[dict]:
+    """将坐标点列表从 WGS-84 转换为 BD-09，保留 ele 和 dist 字段。"""
+    result = []
+    for p in points:
+        bd_lng, bd_lat = _wgs84_to_bd09(p["lon"], p["lat"])
+        result.append({
+            "lat": bd_lat,
+            "lon": bd_lng,
+            "ele": p.get("ele", 0),
+            "dist": p.get("dist", 0),
+        })
+    return result
+
+
 def lookup_elevations(points: list[dict]) -> list[dict]:
     """调用 open-elevation API 查询高程。
     points: [{"lat": x, "lon": y}, ...]
@@ -259,6 +288,8 @@ def enrich_route_with_elevation(track_points: list[dict], *, is_wgs84: bool = Tr
             elev = lookup_elevations_local(wgs84_points)
             elev_with_dist = calculate_cumulative_distances(elev)
         points = savitzky_golay_smooth(elev_with_dist)
+        if not is_wgs84:
+            points = convert_points_wgs84_to_bd09(points)
 
     stats = calculate_elevation_stats(points)
     climbs = detect_climbs(points)
