@@ -18,6 +18,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from app.services.elevation_service import (
     extract_coordinates, sample_points, lookup_elevations_local,
     calculate_elevation_stats, convert_points_bd09_to_wgs84,
+    convert_points_wgs84_to_bd09,
     calculate_cumulative_distances, detect_climbs, savitzky_golay_smooth,
 )
 
@@ -326,6 +327,7 @@ def build_agent(checkpointer):
                                 elev_points = lookup_elevations_local(wgs84_points)
                                 elev_with_dist = calculate_cumulative_distances(elev_points)
                                 elev_smoothed = savitzky_golay_smooth(elev_with_dist)
+                                elev_smoothed = convert_points_wgs84_to_bd09(elev_smoothed)
                                 stats = calculate_elevation_stats(elev_with_dist)
                                 climbs = detect_climbs(elev_with_dist)
                                 result_str += (
